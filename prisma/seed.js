@@ -170,6 +170,7 @@ async function seedDemoBooking() {
   const arjun = await prisma.user.findUnique({ where: { email: 'arjun@yatrasetu.in' } });
   const arjunProfile = await prisma.guideProfile.findUnique({ where: { userId: arjun.id } });
   if (!spot || !arjunProfile) return;
+  await prisma.liveLocation.upsert({ where: { guideId: arjunProfile.id }, update: { latitude: 26.9124, longitude: 75.7873 }, create: { guideId: arjunProfile.id, latitude: 26.9124, longitude: 75.7873 } });
 
   const existing = await prisma.booking.findFirst({ where: { touristId: traveller.id, spotId: spot.id } });
   if (existing) return;

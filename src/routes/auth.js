@@ -2,6 +2,7 @@ const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { z } = require('zod');
+const auth = require('../middleware/auth');
 
 const credentials = z.object({ name: z.string().min(2).optional(), email: z.string().email(), password: z.string().min(8) });
 const tokenFor = user => jwt.sign({ sub: user.id, role: user.role, name: user.name }, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -24,11 +25,17 @@ router.post('/login', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get('/me', async (req, res, next) => {
+router.get('/me', auth, async (req, res, next) => {
   try {
-    const user = await req.app.get('prisma').user.findUnique({ where: { id: req.user.sub } });
+    const user = await req.app.get('prisma').user.findUnique({
+      where: { id: req.user.sub },
+      include: {
+        _count: { select: { bookings: true, alerts: true, feedback: true } },
+        guideProfile: { select: { id: true, licenceNumber: true, approvalStatus: true } },
+      },
+    });
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(publicUser(user));
+    res.json({ ...publicUser(user), stats: user._count, guideProfile: user.guideProfile || null });
   } catch (e) { next(e); }
 });
 
@@ -42,7 +49,7 @@ const preferencesSchema = z.object({
   endDate: z.coerce.date().optional()
 });
 
-router.put('/me/preferences', async (req, res, next) => {
+router.put('/me/preferences', auth, async (req, res, next) => {
   try {
     const data = preferencesSchema.parse(req.body);
     const user = await req.app.get('prisma').user.update({ where: { id: req.user.sub }, data: { preferences: data } });

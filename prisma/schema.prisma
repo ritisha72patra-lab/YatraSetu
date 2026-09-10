@@ -46,6 +46,7 @@ model User {
   guideProfile GuideProfile?
   feedback Feedback[]
   alerts SafetyAlert[]
+  guideChangeRequests GuideChangeRequest[]
 }
 model TouristSpot {
   id String @id @default(cuid())
@@ -83,6 +84,8 @@ model GuideProfile {
   feedback Feedback[]
   liveLocation LiveLocation?
   verificationLogs VerificationLog[]
+  currentRequests GuideChangeRequest[] @relation("CurrentGuide")
+  requestedRequests GuideChangeRequest[] @relation("RequestedGuide")
 }
 model CabProfile {
   id String @id @default(cuid())
@@ -119,6 +122,7 @@ model Booking {
   cab CabProfile? @relation(fields:[cabId], references:[id])
   spot TouristSpot @relation(fields:[spotId], references:[id])
   feedback Feedback[]
+  guideChangeRequests GuideChangeRequest[]
 }
 model VerificationLog {
   id String @id @default(cuid())
@@ -172,4 +176,25 @@ model SafetyAlert {
   resolved Boolean @default(false)
   createdAt DateTime @default(now())
   user User @relation(fields:[userId], references:[id])
+}
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+model GuideChangeRequest {
+  id String @id @default(cuid())
+  bookingId String
+  touristId String
+  currentGuideId String?
+  requestedGuideId String?
+  reason String
+  status RequestStatus @default(PENDING)
+  adminNote String?
+  createdAt DateTime @default(now())
+  decidedAt DateTime?
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  tourist User @relation(fields: [touristId], references: [id], onDelete: Cascade)
+  currentGuide GuideProfile? @relation("CurrentGuide", fields: [currentGuideId], references: [id])
+  requestedGuide GuideProfile? @relation("RequestedGuide", fields: [requestedGuideId], references: [id])
 }

@@ -23,6 +23,7 @@ app.use('/api/trips', auth, routes.trips);
 app.use('/api/verify', auth, routes.verify);
 app.use('/api/admin', auth, routes.admin);
 app.use('/api/location', auth, routes.location);
+app.use('/api/requests', auth, routes.requests);
 app.use('/api/safety', auth, routes.safety);
 app.use('/api/feedback', auth, routes.feedback);
 app.use((err, _, res, __) => { console.error(err); res.status(err.status || 500).json({ error: err.message || 'Internal server error' }); });

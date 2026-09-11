@@ -81,9 +81,10 @@
     .time-muted{color:var(--muted);font-size:11px}
     .role-hidden{display:none!important}.admin-notice{display:flex;gap:10px;align-items:center;border:1px dashed var(--teal);background:var(--card);border-radius:12px;padding:12px 14px;font-size:12px;margin-top:18px}.admin-notice button{margin-left:auto;flex-shrink:0}
     @media(max-width:900px){.admin-view{padding:20px}.admin-kpis{grid-template-columns:1fr 1fr}.profile-stats{grid-template-columns:1fr 1fr}}
+  body.auth-loading main{opacity:.35;pointer-events:none;transition:opacity .2s}
   </style>
 </head>
-<body>
+<body class="auth-loading">
 <div class="app">
   <aside><div class="brand-block"><div class="brand"><div class="brand-mark">✦</div>YātraSetu</div><div class="tagline">Your Bridge to a Safer Journey.</div></div><nav class="nav"><a class="active" data-role="all" href="#" onclick="showDiscover(event)"><i>⌂</i> Discover</a><a href="#" id="nav-trips" data-role="traveller" onclick="showTrips(event)"><i>◈</i> My trips</a><a href="#" id="nav-safety" data-role="traveller" onclick="showSafety(event)"><i>⌖</i> Live safety</a><a href="#" id="nav-planner" data-role="traveller" onclick="openPlanner(event)"><i>☷</i> Trip planner</a><a href="#" id="nav-saved" data-role="traveller" onclick="showSaved(event)"><i>♡</i> Saved places</a><a href="#" id="nav-profile" data-role="all" onclick="showProfile(event)"><i>◉</i> My profile</a><a href="#" id="nav-admin" data-role="admin" onclick="showAdmin(event)"><i>▦</i> Admin console</a></nav><div class="side-help"><b>Need help on your trip?</b><small>Our safety team is available 24/7.</small><button onclick="sendSOS(event)">Emergency support</button></div></aside>
   <main><header class="top"><div><div class="eyebrow">Saturday, 5 September</div><h1 id="greeting-name">Namaste, Traveller 👋</h1><div class="time-muted" id="auth-status">Sign in to sync trips & safety</div></div><div class="top-actions"><button class="icon-btn" onclick="toggleDark()" title="Toggle theme">◐</button><button class="icon-btn" onclick="openAssistant(event)" title="AI travel assistant">✦</button><button class="icon-btn" onclick="openLogin(event)" title="Sign in">♧</button><button class="avatar" id="avatar-btn" onclick="showProfile(event)" title="My profile">👩🏽</button></div></header>
@@ -97,7 +98,65 @@
 </div>
 <div class="modal" id="modal"><div class="modal-card"><button class="close" onclick="closeVerify()">×</button><div class="eyebrow">ON-SPOT VERIFICATION</div><h2>Guide identity confirmed</h2><p>Scan the QR code printed on your guide’s YatraSetu registry card. The app checks the admin-approved record, trip assignment and agreed fare.</p><div class="verify"><div class="qr"></div><div><b>Arjun Mehta</b><small>✓ YatraSetu registry approved</small><p style="margin:5px 0 0">Fixed fare: ₹2,400 / day<br>Valid until: Dec 2027</p></div></div><button class="success" onclick="confirmGuide()">Confirm guide & fixed rate</button></div></div><div class="toast" id="toast"></div>
 <script src="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script>
+// ---- Firebase Authentication -------------------------------------------------
+// These values are PUBLIC client identifiers (not secrets) — Firebase Console >
+// Project settings > General > Your apps > Web app > SDK setup and configuration.
+const firebaseConfig = {
+  apiKey: "AIzaSyDzdN8wDgsofitPtfFtGYUrDYc4ztBUCeg",
+  authDomain: "yatrasetu-53362.firebaseapp.com",
+  projectId: "yatrasetu-53362",
+  storageBucket: "yatrasetu-53362.firebasestorage.app",
+  messagingSenderId: "91031798464",
+  appId: "1:91031798464:web:eb6f633e4cbdf04ab7e325"
+};
+firebase.initializeApp(firebaseConfig);
+let fbAuth = null;
+try { fbAuth = firebase.auth(); }
+catch (e) { console.error('Firebase Auth failed to initialize — check firebaseConfig and that gstatic.com is not blocked:', e); }
+function requireFbAuth(){ if(!fbAuth) throw new Error('Sign-in is unavailable right now (Firebase did not initialize). Please reload the page.'); return fbAuth; }
+
+// Keeps localStorage's 'ys-token' holding a fresh Firebase ID token at all times —
+// fires on sign-in, sign-out, and Firebase's automatic silent token refresh
+// (roughly hourly), so every existing fetch() call using authHeaders() keeps working
+// unchanged. `authReady` gates the initial "loading" state while Firebase determines
+// whether a session already exists (e.g. after an app/browser restart).
+let authReady = false;
+(fbAuth||{onIdTokenChanged(){}}).onIdTokenChanged(async user => {
+  if (user) {
+    try { localStorage.setItem('ys-token', await user.getIdToken()); }
+    catch { localStorage.removeItem('ys-token'); }
+  } else {
+    localStorage.removeItem('ys-token');
+    localStorage.removeItem('ys-user');
+  }
+  if (!authReady) { authReady = true; document.body.classList.remove('auth-loading'); }
+  refreshUserHeader();
+});
+
+function firebaseErrorMessage(error){
+  const map = {
+    'auth/invalid-email': 'That email address looks invalid.',
+    'auth/user-disabled': 'This account has been disabled. Contact support.',
+    'auth/user-not-found': 'No account found with that email.',
+    'auth/wrong-password': 'Incorrect email or password.',
+    'auth/invalid-credential': 'Incorrect email or password.',
+    'auth/invalid-login-credentials': 'Incorrect email or password.',
+    'auth/email-already-in-use': 'An account already exists with that email.',
+    'auth/weak-password': 'Choose a stronger password (at least 8 characters).',
+    'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
+    'auth/network-request-failed': 'Network error — check your connection and try again.',
+    'auth/invalid-api-key': 'App configuration error. Please contact support.',
+    'auth/operation-not-allowed': 'Email/password sign-in is not enabled for this app yet.'
+  };
+  const message = map[error?.code];
+  if (!message) console.error('Firebase auth error:', error);
+  return message || 'Something went wrong. Please try again.';
+}
+// -------------------------------------------------------------------------------
+
 function toggleDark(){document.body.classList.toggle('dark');localStorage.setItem('ys-theme',document.body.classList.contains('dark')?'dark':'light')}
 if(localStorage.getItem('ys-theme')==='dark')document.body.classList.add('dark');
 function openVerify(){openWorkflow('Verify guide QR',`<p>Paste the QR payload from the guide card. The backend checks the admin-approved registry record, trip assignment and official fare.</p><form class="workflow-form" onsubmit="verifyGuide(event)"><label>QR payload</label><textarea id="qr-payload" required placeholder='{"service":"GUIDE","id":"...","bookingId":"..."}'></textarea><button class="success">Check verification</button></form><div id="verify-result"></div>`)}
@@ -106,15 +165,15 @@ function openWorkflow(title,content){const modal=document.getElementById('modal'
 function requireAuth(){if(localStorage.getItem('ys-token'))return true;openLogin();return false}
 function openLogin(event){event?.preventDefault();openWorkflow('Sign in to YātraSetu',`<p>Sign in to save trips, send safety alerts, verify a guide and submit feedback.</p><form class="workflow-form" onsubmit="login(event)"><label>Email</label><input id="login-email" type="email" required value="${localStorage.getItem('ys-email')||''}" placeholder="traveller@example.com"><label>Password</label><input id="login-password" type="password" required minlength="8" placeholder="At least 8 characters"><button class="success">Sign in</button></form><p><button class="btn btn-ghost btn-small" type="button" onclick="openRegister()">Create traveller account</button></p><div id="login-result"></div>`)}
 function openRegister(){openWorkflow('Create traveller account',`<form class="workflow-form" onsubmit="register(event)"><label>Name</label><input id="register-name" required minlength="2" placeholder="Your name"><label>Email</label><input id="register-email" type="email" required placeholder="traveller@example.com"><label>Password</label><input id="register-password" type="password" required minlength="8" placeholder="At least 8 characters"><button class="success">Create account</button></form><div id="login-result"></div>`)}
-async function login(event){event.preventDefault();try{const response=await fetch(`${apiBase}/api/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('login-email').value,password:document.getElementById('login-password').value})});const data=await response.json();if(!response.ok)throw new Error(data.error);localStorage.setItem('ys-token',data.token);localStorage.setItem('ys-email',data.user.email);localStorage.setItem('ys-user',JSON.stringify(data.user));closeVerify();refreshUserHeader();toast(`Welcome back, ${data.user.name}.`)}catch(error){document.getElementById('login-result').innerHTML=`<div class="workflow-result">${error.message}</div>`}}
-async function register(event){event.preventDefault();try{const response=await fetch(`${apiBase}/api/auth/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:document.getElementById('register-name').value,email:document.getElementById('register-email').value,password:document.getElementById('register-password').value})});const data=await response.json();if(!response.ok)throw new Error(data.error);localStorage.setItem('ys-token',data.token);localStorage.setItem('ys-email',data.user.email);localStorage.setItem('ys-user',JSON.stringify(data.user));closeVerify();refreshUserHeader();toast(`Welcome, ${data.user.name}. Your trip workspace is ready.`)}catch(error){document.getElementById('login-result').innerHTML=`<div class="workflow-result">${error.message}</div>`}}
+async function login(event){event.preventDefault();try{const cred=await requireFbAuth().signInWithEmailAndPassword(document.getElementById('login-email').value,document.getElementById('login-password').value);const token=await cred.user.getIdToken();localStorage.setItem('ys-token',token);localStorage.setItem('ys-email',cred.user.email);const response=await fetch(`${apiBase}/api/auth/me`,{headers:{Authorization:`Bearer ${token}`}});const data=await response.json();if(!response.ok)throw new Error(data.error||'Could not load your profile');localStorage.setItem('ys-user',JSON.stringify(data));closeVerify();refreshUserHeader();toast(`Welcome back, ${data.name}.`)}catch(error){document.getElementById('login-result').innerHTML=`<div class="workflow-result">${error.code?firebaseErrorMessage(error):error.message}</div>`}}
+async function register(event){event.preventDefault();try{const name=document.getElementById('register-name').value;const cred=await requireFbAuth().createUserWithEmailAndPassword(document.getElementById('register-email').value,document.getElementById('register-password').value);await cred.user.updateProfile({displayName:name});const token=await cred.user.getIdToken();localStorage.setItem('ys-token',token);localStorage.setItem('ys-email',cred.user.email);const response=await fetch(`${apiBase}/api/auth/sync`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({name})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Could not finish setting up your account');localStorage.setItem('ys-user',JSON.stringify(data));closeVerify();refreshUserHeader();toast(`Welcome, ${data.name}. Your trip workspace is ready.`)}catch(error){document.getElementById('login-result').innerHTML=`<div class="workflow-result">${error.code?firebaseErrorMessage(error):error.message}</div>`}}
 function getCurrentUser(){try{return JSON.parse(localStorage.getItem('ys-user')||'null')}catch{return null}}
 function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function timeAgo(iso){const s=Math.max(1,Math.floor((Date.now()-new Date(iso).getTime())/1000));if(s<60)return s+'s ago';const m=Math.floor(s/60);if(m<60)return m+'m ago';const h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago'}
 function refreshUserHeader(){const u=getCurrentUser();const g=document.getElementById('greeting-name');if(g)g.textContent=u?`Namaste, ${u.name} 👋`:'Namaste, Traveller 👋';const st=document.getElementById('auth-status');if(st)st.textContent=u?`${u.email} · ${u.role||'TOURIST'}`:'Sign in to sync trips & safety';const av=document.getElementById('avatar-btn');if(av)av.textContent=u?(u.name||'U').trim().charAt(0).toUpperCase():'👩🏽';try{applyRoleVisibility()}catch{}}
 function currentRole(){const u=getCurrentUser();return u?(u.role||'TOURIST'):'GUEST'}
 function applyRoleVisibility(){const role=currentRole(),isAdmin=role==='ADMIN';document.querySelectorAll('[data-role="traveller"]').forEach(el=>el.classList.toggle('role-hidden',isAdmin));document.querySelectorAll('[data-role="admin"]').forEach(el=>el.classList.toggle('role-hidden',!isAdmin));const n=document.getElementById('admin-notice');if(n)n.classList.toggle('role-hidden',!isAdmin)}
-function logout(){localStorage.removeItem('ys-token');localStorage.removeItem('ys-user');stopUserTracking(false);refreshUserHeader();closeVerify();toast('Signed out.')}
+function logout(){requireFbAuth().signOut();localStorage.removeItem('ys-token');localStorage.removeItem('ys-user');stopUserTracking(false);refreshUserHeader();closeVerify();toast('Signed out.')}
 async function showProfile(event){event?.preventDefault();const cached=getCurrentUser();if(!localStorage.getItem('ys-token')){openLogin(event);return}let me=cached,stats=null;try{const r=await fetch(`${apiBase}/api/auth/me`,{headers:authHeaders()});if(r.ok){me=await r.json();localStorage.setItem('ys-user',JSON.stringify({id:me.id,name:me.name,email:me.email,role:me.role,preferences:me.preferences}));refreshUserHeader();stats=me.stats}}catch{}if(!me){openLogin(event);return}const prefs=me.preferences||{};openWorkflow('My profile',`<div class="profile-head"><div class="profile-avatar">${escapeHtml((me.name||'U').charAt(0).toUpperCase())}</div><div><b style="font-size:16px">${escapeHtml(me.name)}</b><br><small class="time-muted">${escapeHtml(me.email)} · ${escapeHtml(me.role||'TOURIST')}</small></div></div>${stats?`<div class="profile-stats"><div class="profile-stat"><b>${stats.bookings??'—'}</b><small>Trips</small></div><div class="profile-stat"><b>${stats.alerts??'—'}</b><small>SOS alerts</small></div><div class="profile-stat"><b>${stats.feedback??'—'}</b><small>Reviews</small></div></div>`:''}<p>Interests: ${escapeHtml((prefs.interests||[]).join(', ')||'Not set')} · Budget: ${prefs.budget?'₹'+prefs.budget:'Not set'} · Pace: ${escapeHtml(prefs.pace||'balanced')}</p><form class="workflow-form" onsubmit="savePreferences(event)"><label>Interests (comma separated)</label><input id="pref-interests" value="${escapeHtml((prefs.interests||[]).join(', '))}" placeholder="culture, food, beaches"><div class="workflow-grid"><div><label>Budget (INR)</label><input id="pref-budget" type="number" min="500" value="${prefs.budget||18500}"></div><div><label>Pace</label><select id="pref-pace"><option ${prefs.pace==='fast'?'selected':''}>fast</option><option ${!prefs.pace||prefs.pace==='balanced'?'selected':''}>balanced</option><option ${prefs.pace==='slow'?'selected':''}>slow</option></select></div></div><button class="btn btn-primary btn-block">Save preferences</button></form><div id="pref-result" style="margin-top:8px"></div><div class="trip-card-actions"><button class="btn btn-ghost btn-small" onclick="showTrips()">My trips</button><button class="btn btn-ghost btn-small" onclick="showMySosHistory()">My SOS history</button><button class="btn btn-ghost btn-small" onclick="logout()">Sign out</button></div>`)}
 async function savePreferences(event){event.preventDefault();try{const body={interests:document.getElementById('pref-interests').value.split(',').map(s=>s.trim()).filter(Boolean),budget:Number(document.getElementById('pref-budget').value)||undefined,pace:document.getElementById('pref-pace').value};const r=await fetch(`${apiBase}/api/auth/me/preferences`,{method:'PUT',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw new Error(d.error);document.getElementById('pref-result').innerHTML='<div class="workflow-result">Preferences saved — recommendations will adapt.</div>';toast('Profile updated.')}catch(e){document.getElementById('pref-result').innerHTML=`<div class="workflow-result">${escapeHtml(e.message)}</div>`}}
 function openPlanner(event){event?.preventDefault();if(localStorage.getItem('ys-token')&&currentRole()==='ADMIN'){toast('Traveller-only: sign in as a traveller to plan trips.');return;}const options=demoSpots.map(spot=>`<option value="${spot.name}">${spot.name}, ${spot.state}</option>`).join('');openWorkflow('Build your trip',`<p>Set your destination, dates, budget and interests. YātraSetu creates a day-by-day itinerary within your budget.</p><form class="workflow-form" onsubmit="planTrip(event)"><div class="workflow-grid"><div><label>Destination</label><select id="plan-spot">${options}</select></div><div><label>Budget (INR)</label><input id="plan-budget" type="number" min="500" value="18500" required></div></div><div class="workflow-grid"><div><label>Start date</label><input id="plan-start" type="date" required value="2026-10-12"></div><div><label>End date</label><input id="plan-end" type="date" required value="2026-10-16"></div></div><label>Preferences</label><input id="plan-preferences" value="culture, food, safe routes" placeholder="beaches, cruise, city, food"><button class="success">Generate budget itinerary</button></form><div id="plan-result"></div>`)}

@@ -6,7 +6,7 @@ Node.js + Express REST API, PostgreSQL + Prisma ORM, and an optional Python Fast
 
 1. Install **Node.js 20+**, **PostgreSQL 15+**, and optionally **Python 3.11+** for the prediction service.
 2. Create a database called `yatrasetu` in PostgreSQL.
-3. Copy `.env.example` to `.env`, then set `DATABASE_URL` and a strong `JWT_SECRET`.
+3. Copy `.env.example` to `.env`, then set `DATABASE_URL` and a strong `JWT_SECRET`. For Gemini AI recommendations, add `GEMINI_API_KEY` (from Google AI Studio) — without it the assistant uses a local heuristic over the same live signals.
 4. In PowerShell run `npm.cmd install`, `npm.cmd run prisma:generate`, `npm.cmd run prisma:migrate`, then `npm.cmd run prisma:seed`.
 5. Start the API with `npm.cmd run dev`. Health check: `http://localhost:4000/health`.
 6. Optional prediction service: `cd prediction-service`, `py -m pip install -r requirements.txt`, then `uvicorn main:app --port 8001`.
@@ -26,6 +26,7 @@ The browser dashboard is served at `http://localhost:4000/`. Seeded demo admin c
 | SOS / safety alert | `POST /api/safety/alerts` |
 | Ratings & crowd confirmation | `POST /api/feedback` |
 | Explainable crowd forecast | `GET /api/spots/:id/crowd-prediction?date=2026-10-12&weatherRisk=.2` |
+| AI recommendations (Gemini + live crowd/AQI/weather) | `GET /api/ai/status`, `POST /api/ai/recommend` with `{ "query": "Kerala", "interest": "beach", "mode": "recommend" }` |
 | Service QR code | `GET /api/verify/guide/:id/qr` or `GET /api/verify/cab/:id/qr` |
 | Scan guide or cab | `POST /api/verify/scan` with `{ "service":"GUIDE"|"CAB", "id":"...", "bookingId":"..." }` |
 | Admin dashboard data | Admin-only `GET /api/admin/overview` |

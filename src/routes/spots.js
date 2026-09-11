@@ -1,45 +1,20 @@
 const router = require('express').Router();
 const { getCrowdPrediction } = require('../services/prediction');
+const { getEnvironment } = require('../services/environment');
 const { z } = require('zod');
-
-function envFallback() {
-  return { aqi: 42, aqiLabel: 'Good', temperature: 28, weather: 'Clear skies', source: 'demo-fallback', updatedAt: new Date().toISOString() };
-}
 
 router.get('/environment', async (req, res, next) => {
   try {
     const latitude = Number(req.query.latitude || 24.5854), longitude = Number(req.query.longitude || 73.7125);
-    const result = envFallback();
-    if (process.env.OPENWEATHER_API_KEY && !process.env.OPENWEATHER_API_KEY.startsWith('replace-')) {
-      const weatherResponse = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&units=metric&appid=${process.env.OPENWEATHER_API_KEY}`, { signal: AbortSignal.timeout(2500) });
-      if (weatherResponse.ok) {
-        const weather = await weatherResponse.json();
-        result.temperature = Math.round(weather.main?.temp ?? 28);
-        result.weather = weather.weather?.[0]?.description || 'Clear skies';
-        result.source = 'OpenWeather';
-      }
-    }
-    if (process.env.WAQI_API_TOKEN && !process.env.WAQI_API_TOKEN.startsWith('replace-')) {
-      const aqiResponse = await fetch(`https://api.waqi.info/feed/geo:${latitude};${longitude}/?token=${process.env.WAQI_API_TOKEN}`, { signal: AbortSignal.timeout(2500) });
-      if (aqiResponse.ok) {
-        const air = await aqiResponse.json();
-        const value = Number(air.data?.aqi);
-        if (air.status === 'ok' && Number.isFinite(value)) {
-          result.aqi = value;
-          result.aqiLabel = value <= 50 ? 'Good' : value <= 100 ? 'Moderate' : 'Needs care';
-          result.source = result.source === 'demo-fallback' ? 'WAQI' : `${result.source} + WAQI`;
-        }
-      }
-    }
-    res.json(result);
-  } catch (_) { res.json(envFallback()); }
+    res.json(await getEnvironment(latitude, longitude));
+  } catch (_) { res.json(await getEnvironment(24.5854, 73.7125)); }
 });
 
 router.get('/', async (req, res, next) => {
   try {
     const prisma = req.app.get('prisma');
     const page = Math.max(1, Number(req.query.page || 1));
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 24)));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 100)));
     const search = String(req.query.search || '').trim();
     const where = search ? { OR: [{ name: { contains: search, mode: 'insensitive' } }, { city: { contains: search, mode: 'insensitive' } }, { state: { contains: search, mode: 'insensitive' } }, { tags: { has: search.toLowerCase() } }] } : {};
     const [spots, total] = await Promise.all([

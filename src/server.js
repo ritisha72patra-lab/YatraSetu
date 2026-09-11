@@ -11,7 +11,7 @@ const path = require('path');
 const app = express();
 const prisma = new PrismaClient();
 app.set('prisma', prisma);
-app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'", "'unsafe-inline'", 'https://unpkg.com'], styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://unpkg.com'], fontSrc: ["'self'", 'https://fonts.gstatic.com'], imgSrc: ["'self'", 'data:', 'https:'], connectSrc: ["'self'", 'https:'], workerSrc: ["'self'", 'blob:'] } } }));
+app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://www.gstatic.com'], scriptSrcAttr: ["'unsafe-inline'"], styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://unpkg.com'], fontSrc: ["'self'", 'https://fonts.gstatic.com'], imgSrc: ["'self'", 'data:', 'https:'], connectSrc: ["'self'", 'https:'], frameSrc: ["'self'", 'https://*.firebaseapp.com'], workerSrc: ["'self'", 'blob:'] } } }));
 app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(',') || true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));

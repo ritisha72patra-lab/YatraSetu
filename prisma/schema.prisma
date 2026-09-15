@@ -1,0 +1,200 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+enum UserRole {
+  TOURIST
+  GUIDE
+  ADMIN
+}
+enum BookingStatus {
+  DRAFT
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+enum AlertType {
+  SOS
+  WEATHER
+  CROWD
+  AQI
+}
+enum VerificationService {
+  GUIDE
+  CAB
+}
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id String @id @default(cuid())
+  name String
+  email String @unique
+  passwordHash String
+  role UserRole @default(TOURIST)
+  preferences Json?
+  createdAt DateTime @default(now())
+  bookings Booking[] @relation("TouristBookings")
+  guideProfile GuideProfile?
+  feedback Feedback[]
+  alerts SafetyAlert[]
+  guideChangeRequests GuideChangeRequest[]
+}
+model TouristSpot {
+  id String @id @default(cuid())
+  name String @unique
+  city String
+  state String
+  description String
+  imageUrl String?
+  latitude Float
+  longitude Float
+  tags String[]
+  averageCost Int
+  safetyScore Int @default(82)
+  bestVisitTime String?
+  crowdReports CrowdReport[]
+  bookings Booking[]
+  createdAt DateTime @default(now())
+}
+model GuideProfile {
+  id String @id @default(cuid())
+  userId String @unique
+  licenceNumber String @unique
+  governmentVerified Boolean @default(false)
+  approvalStatus ApprovalStatus @default(PENDING)
+  documentUrl String?
+  officialDailyRate Int
+  languages String[]
+  rating Float @default(0)
+  totalTrips Int @default(0)
+  bio String?
+  region String?
+  availability Json?
+  user User @relation(fields:[userId], references:[id])
+  bookings Booking[]
+  feedback Feedback[]
+  liveLocation LiveLocation?
+  verificationLogs VerificationLog[]
+  currentRequests GuideChangeRequest[] @relation("CurrentGuide")
+  requestedRequests GuideChangeRequest[] @relation("RequestedGuide")
+}
+model CabProfile {
+  id String @id @default(cuid())
+  driverName String
+  registrationNumber String @unique
+  permitNumber String @unique
+  governmentVerified Boolean @default(false)
+  approvalStatus ApprovalStatus @default(PENDING)
+  documentUrl String?
+  officialRatePerKm Float
+  capacity Int @default(4)
+  rating Float @default(0)
+  region String?
+  availability Json?
+  bookings Booking[]
+  verificationLogs VerificationLog[]
+  createdAt DateTime @default(now())
+}
+model Booking {
+  id String @id @default(cuid())
+  touristId String
+  guideId String?
+  cabId String?
+  spotId String
+  startDate DateTime
+  endDate DateTime
+  budget Int
+  agreedRate Int?
+  itinerary Json?
+  status BookingStatus @default(DRAFT)
+  createdAt DateTime @default(now())
+  tourist User @relation("TouristBookings", fields:[touristId], references:[id])
+  guide GuideProfile? @relation(fields:[guideId], references:[id])
+  cab CabProfile? @relation(fields:[cabId], references:[id])
+  spot TouristSpot @relation(fields:[spotId], references:[id])
+  feedback Feedback[]
+  guideChangeRequests GuideChangeRequest[]
+}
+model VerificationLog {
+  id String @id @default(cuid())
+  service VerificationService
+  guideId String?
+  cabId String?
+  scannedById String
+  bookingId String?
+  verified Boolean
+  fixedPriceConfirmed Boolean @default(false)
+  scannedAt DateTime @default(now())
+  cab CabProfile? @relation(fields:[cabId], references:[id])
+  guide GuideProfile? @relation(fields:[guideId], references:[id])
+}
+model LiveLocation {
+  id String @id @default(cuid())
+  guideId String @unique
+  latitude Float
+  longitude Float
+  updatedAt DateTime @updatedAt
+  guide GuideProfile @relation(fields:[guideId], references:[id])
+}
+model Feedback {
+  id String @id @default(cuid())
+  userId String
+  guideId String?
+  bookingId String?
+  rating Int
+  comment String?
+  crowdLevel Int?
+  createdAt DateTime @default(now())
+  user User @relation(fields:[userId], references:[id])
+  guide GuideProfile? @relation(fields:[guideId], references:[id])
+  booking Booking? @relation(fields:[bookingId], references:[id])
+}
+model CrowdReport {
+  id String @id @default(cuid())
+  spotId String
+  level Int
+  source String @default("tourist")
+  recordedAt DateTime @default(now())
+  spot TouristSpot @relation(fields:[spotId], references:[id])
+}
+model SafetyAlert {
+  id String @id @default(cuid())
+  userId String
+  type AlertType
+  latitude Float?
+  longitude Float?
+  message String?
+  resolved Boolean @default(false)
+  createdAt DateTime @default(now())
+  user User @relation(fields:[userId], references:[id])
+}
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+model GuideChangeRequest {
+  id String @id @default(cuid())
+  bookingId String
+  touristId String
+  currentGuideId String?
+  requestedGuideId String?
+  reason String
+  status RequestStatus @default(PENDING)
+  adminNote String?
+  createdAt DateTime @default(now())
+  decidedAt DateTime?
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  tourist User @relation(fields: [touristId], references: [id], onDelete: Cascade)
+  currentGuide GuideProfile? @relation("CurrentGuide", fields: [currentGuideId], references: [id])
+  requestedGuide GuideProfile? @relation("RequestedGuide", fields: [requestedGuideId], references: [id])
+}

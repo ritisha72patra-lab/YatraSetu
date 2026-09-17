@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "YatraSetu",
+    "slug": "yatrasetu",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/yatrasetu-icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "yatrasetu",
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": true, "bundleIdentifier": "in.yatrasetu.app" },
+    "android": { "package": "in.yatrasetu.app", "adaptiveIcon": { "foregroundImage": "./assets/yatrasetu-icon.png", "backgroundColor": "#0b3f43" } },
+    "plugins": [
+      ["expo-camera", { "cameraPermission": "Allow YatraSetu to scan guide/cab QR codes." }],
+      ["expo-location", { "locationWhenInUsePermission": "Allow YatraSetu to show your live location next to your guide for safety." }],
+      ["expo-splash-screen", { "image": "./assets/yatrasetu-icon.png", "resizeMode": "contain", "backgroundColor": "#0b3f43" }]
+    ],
+    "extra": {
+      "apiUrl": "http://172.29.163.91:4000",
+      "eas": { "projectId": "00000000-0000-0000-0000-000000000000" }
+    }
+  }
+}

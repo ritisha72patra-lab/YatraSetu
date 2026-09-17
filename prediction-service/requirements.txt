@@ -1,3 +1,8 @@
-fastapi==0.115.12
+# Optimised stack: Starlette + msgspec instead of FastAPI + pydantic (feature 10).
+# Smaller wheels, faster validation, installs on any system with Python 3.10+.
+starlette==0.41.3
 uvicorn[standard]==0.34.2
-pydantic==2.11.4
+msgspec==0.19.0
+# Crowd model (feature 8)
+scikit-learn==1.5.2
+numpy==2.1.3

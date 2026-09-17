@@ -6,27 +6,31 @@ const morgan = require('morgan');
 const { PrismaClient } = require('@prisma/client');
 const auth = require('./middleware/auth');
 const routes = require('./routes');
-const path = require('path');
 
 const app = express();
 const prisma = new PrismaClient();
 app.set('prisma', prisma);
-app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://www.gstatic.com', 'https://apis.google.com'], styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://unpkg.com'], fontSrc: ["'self'", 'https://fonts.gstatic.com'], imgSrc: ["'self'", 'data:', 'https:'], connectSrc: ["'self'", 'https:', 'https://identitytoolkit.googleapis.com', 'https://securetoken.googleapis.com'], workerSrc: ["'self'", 'blob:'], frameSrc: ["'self'", 'https://*.firebaseapp.com', 'https://*.google.com'] } } }));
+// API-only backend (React Native / Expo frontend). No HTML served.
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(',') || true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
-app.use(express.static(path.join(__dirname, '..')));
+app.get('/', (_, res) => res.json({ service: 'yatrasetu-api', status: 'ok', frontend: 'Expo React Native app in ./mobile', docs: 'See README.md' }));
 app.get('/health', (_, res) => res.json({ status: 'ok', service: 'yatrasetu-api' }));
 app.use('/api/auth', routes.auth);
 app.use('/api/spots', routes.spots);
+// Hotels: public reads, auth writes. GETs skip auth so Discover works logged-out.
+app.use('/api/hotels', (req, res, next) => (req.method === 'GET' ? next() : auth(req, res, next)), routes.hotels);
 app.use('/api/ai', routes.ai);
+// Feedback wall is public-readable; writes need auth. Mount GETs before auth.
+app.use('/api/payments', auth, routes.payments);
 app.use('/api/trips', auth, routes.trips);
 app.use('/api/verify', auth, routes.verify);
 app.use('/api/admin', auth, routes.admin);
 app.use('/api/location', auth, routes.location);
 app.use('/api/requests', auth, routes.requests);
 app.use('/api/safety', auth, routes.safety);
-app.use('/api/feedback', auth, routes.feedback);
+app.use('/api/feedback', (req, res, next) => (req.method === 'GET' && !req.path.startsWith('/mine') ? next() : auth(req, res, next)), routes.feedback);
 app.use((err, _, res, __) => {
   console.error(err);
   // Zod validation -> tell the user which field is missing/invalid
@@ -61,4 +65,7 @@ app.use((err, _, res, __) => {
   res.status(err.status || 500).json({ error: err.message || 'Internal server error', code: err.code });
 });
 const port = Number(process.env.PORT || 4000);
-app.listen(port, () => console.log(`YatraSetu API listening on http://localhost:${port}`));
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.startsWith('replace-')) {
+  console.warn('[warn] JWT_SECRET is missing/placeholder — set a long random value in .env before production.');
+}
+app.listen(port, '0.0.0.0', () => console.log(`YatraSetu API listening on http://0.0.0.0:${port}`));

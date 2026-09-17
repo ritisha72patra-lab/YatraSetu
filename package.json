@@ -5,13 +5,28 @@
   "description": "Backend API for the YatraSetu smart tourism platform",
   "scripts": {
     "dev": "node --watch src/server.js",
+    "dev:lan": "node --watch src/server.js",
     "start": "node src/server.js",
+    "setup": "npm install && npm run db:setup && npm --prefix mobile install && npx --prefix mobile expo install --fix",
+    "setup:backend": "npm install && npm run db:setup",
+    "setup:mobile": "npm --prefix mobile install && npx --prefix mobile expo install --fix",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
+    "prisma:push": "prisma db push",
     "prisma:seed": "prisma db seed",
     "db:setup": "prisma generate && prisma migrate deploy && prisma db seed",
-    "predict": "cd prediction-service && uvicorn main:app --port 8001"
+    "db:reset3": "prisma generate && prisma db push && prisma db seed",
+    "predict": "cd prediction-service && uvicorn main:app --port 8001",
+    "predict:train": "cd prediction-service && python train.py",
+    "mobile": "cd mobile && npx expo start --lan",
+    "mobile:tunnel": "cd mobile && npx expo start --tunnel",
+    "mobile:doctor": "cd mobile && npx expo-doctor",
+    "check": "node --check src/server.js && node --check src/routes/payments.js && node --check src/routes/trips.js && node --check src/routes/verify.js && node --check src/routes/spots.js && node --check src/routes/hotels.js && node --check src/routes/feedback.js && node --check src/services/pricing.js && node --check src/services/qr.js && node --check src/services/smartItinerary.js"
+  },
+  "engines": {
+    "node": ">=20.19 <25",
+    "npm": ">=10"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -21,6 +36,7 @@
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
+    "expo": "^57.0.23",
     "express": "^5.1.0",
     "firebase-admin": "^13.4.0",
     "helmet": "^8.1.0",

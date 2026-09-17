@@ -1,53 +1,40 @@
-# YātraSetu backend
+# YatraSetu — API + Expo React Native app
 
-Node.js + Express REST API, PostgreSQL + Prisma ORM, and an optional Python FastAPI crowd-prediction service. It implements the architecture supplied: tourist discovery, budget planning, verified guide QR checks, user feedback/crowd reports, and safety/SOS alerts.
+Node.js + Express REST API, PostgreSQL + Prisma, Python crowd service (Starlette + msgspec + scikit-learn), and an **Expo React Native frontend in `./mobile`** (the old HTML dashboard is removed; the API is now API-only).
 
-## Run locally
+## Run on any system
 
-1. Install **Node.js 20+**, **PostgreSQL 15+**, and optionally **Python 3.11+** for the prediction service.
-2. Create a database called `yatrasetu` in PostgreSQL.
-3. Copy `.env.example` to `.env`, then set `DATABASE_URL` and a strong `JWT_SECRET`. For Gemini AI recommendations, add `GEMINI_API_KEY` (from Google AI Studio) — without it the assistant uses a local heuristic over the same live signals.
-4. In PowerShell run `npm.cmd install`, `npm.cmd run prisma:generate`, `npm.cmd run prisma:migrate`, then `npm.cmd run prisma:seed`.
-5. Start the API with `npm.cmd run dev`. Health check: `http://localhost:4000/health`.
-6. Optional prediction service: `cd prediction-service`, `py -m pip install -r requirements.txt`, then `uvicorn main:app --port 8001`.
+1. Install **Node.js 22** (see `.nvmrc`; Node 20.19+ works, 24 not recommended for Expo 57), **PostgreSQL 15+** (or a Neon URL), and optionally **Python 3.10+**.
+2. Copy `.env.example` to `.env`; set `DATABASE_URL`, `JWT_SECRET`, `QR_SECRET`. Add `GEMINI_API_KEY`, `OPENWEATHER_API_KEY`, `WAQI_API_TOKEN` to go live (all optional — graceful fallbacks included). Leave `RAZORPAY_*` empty for mock checkout.
+3. One-command setup: `npm run setup` (backend install + DB push + seed deps + mobile install + `expo install --fix`). Or step by step:
+   Backend: `npm install`, `npx prisma generate`, `npx prisma db push`, `npm run prisma:seed`, `npm run dev` → `http://localhost:4000/health`.
+4. Crowd model: `cd prediction-service`, `pip install -r requirements.txt`, `python train.py`, `uvicorn main:app --port 8001`.
+5. Mobile: `cd mobile`, `npm install`, `npx expo start --lan`, scan with Expo Go (see `mobile/README.md` for LAN-IP setup). Check health with `npx expo-doctor` (21/21 expected).
 
-The browser dashboard is served at `http://localhost:4000/`. Seeded demo admin credentials are `admin@yatrasetu.in` / `DemoPass123!`; log in through `POST /api/auth/login`, paste the returned token into **Admin console**, and load the control room.
+Catalogue: **3 featured places** — Jaipur (Historical), Goa (Beach), Manali (Hill Station) — each with **popular hotels, best prices, Book now + Pay** (`/api/hotels/*` → `/api/payments/*`).
 
-## API flow
+Demo logins: `admin@yatrasetu.in` / `DemoPass123!`, `traveller@example.com` / `DemoPass123!`.
 
-| Feature | Endpoint |
-| --- | --- |
-| Register / login | `POST /api/auth/register`, `POST /api/auth/login` |
-| Discover destinations | `GET /api/spots` |
-| Budget itinerary | `POST /api/trips/plan` |
-| My trips | `GET /api/trips/mine` |
-| Generate guide QR | `GET /api/verify/guide/:guideId/qr` |
-| Verify on the spot | `POST /api/verify/scan` |
-| SOS / safety alert | `POST /api/safety/alerts` |
-| Ratings & crowd confirmation | `POST /api/feedback` |
-| Explainable crowd forecast | `GET /api/spots/:id/crowd-prediction?date=2026-10-12&weatherRisk=.2` |
-| AI recommendations (Gemini + live crowd/AQI/weather) | `GET /api/ai/status`, `POST /api/ai/recommend` with `{ "query": "Kerala", "interest": "beach", "mode": "recommend" }` |
-| Service QR code | `GET /api/verify/guide/:id/qr` or `GET /api/verify/cab/:id/qr` |
-| Scan guide or cab | `POST /api/verify/scan` with `{ "service":"GUIDE"|"CAB", "id":"...", "bookingId":"..." }` |
-| Admin dashboard data | Admin-only `GET /api/admin/overview` |
-| Review registry records | Admin-only `PUT /api/admin/guides/:id/review`, `PUT /api/admin/cabs/:id/review` |
-| Configure official prices | Admin-only `PUT /api/admin/guides/:id/pricing`, `PUT /api/admin/cabs/:id/pricing` |
-| Resolve alerts and inspect live location | Admin-only `PUT /api/admin/alerts/:id/resolve`, plus `GET /api/location/guide/:guideId` |
+## API flow (all 10 requested features)
 
-Authenticated endpoints require `Authorization: Bearer <token>`.
+| # | Feature | Endpoint |
+| --- | --- | --- |
+| — | Register / login / Firebase bridge | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/firebase { idToken }` |
+| 5 | Discover + personalised by type | `GET /api/spots?type=beach\|hill station&maxCost=&minSafety=`, `GET /api/spots/types`, `GET /api/spots/personalised?interests=beach,heritage&budget=`, `GET /api/spots/featured/list` (top 3) |
+| — | Hotels: popular stays + best prices + Book Now | `GET /api/hotels?spotId=`, `GET /api/hotels/featured`, `GET /api/hotels/:id/price-compare?nights=2`, `POST /api/hotels/book` → standard `/api/payments/*` checkout |
+| 2 | Smart day-wise plan (crowd/AQI/weather/safety) | `POST /api/trips/plan` → `roadmap[]` with per-day signals + reasons |
+| 1 | Book Now + payments (mock → Razorpay-ready) | `POST /api/payments/create { bookingId }`, `POST /api/payments/confirm { paymentId }` |
+| 9 | Minimum-price proof | `quote` inside plan + `GET /api/spots/:id/price-compare?days=3` |
+| 4 | Signed QR (print + camera scan) | `GET /api/verify/guide/:id/qr`, `POST /api/verify/scan-payload { qrText, bookingId?, chargedAmount? }` |
+| 3 | Overcharge / scam alerts | `scam` object in every scan (+ `GET /api/verify/history/mine`) |
+| 6 | Feedback wall | `POST /api/feedback`, `GET /api/feedback?spotId=`, `GET /api/feedback/summary?spotId=`, `GET /api/feedback/mine`, `PUT/DELETE /api/feedback/:id` |
+| 7 | Firebase auth (hardened) | JWT + Firebase ID-token accepted everywhere; throttled login; FCM token stored |
+| 8 | Crowd prediction (sklearn) | `GET /api/spots/:id/crowd-prediction?date=` → Python RF model (history, weekend, holiday/festival, weather, temp, AQI, dow, month) |
+| 10 | Optimised validation | Prediction service uses Starlette + msgspec (no pydantic) |
+| — | SOS / safety | `POST /api/safety/alerts`, `GET /api/safety/alerts/mine`, `GET /api/safety/helplines` |
 
-## Remaining integrations for a production demo
+Authenticated endpoints: `Authorization: Bearer <token>` (YatraSetu JWT **or** Firebase ID token).
 
-- **Firebase Authentication**: replace password login or issue Firebase ID tokens; configure Firebase Admin credentials for verification.
-- **Firebase Cloud Messaging**: send the SOS, AQI, weather, and crowd alerts to travellers/admins.
-- **AQI and weather provider**: add server-side API keys (for example OpenWeather + WAQI), cache readings, and never expose keys to the frontend.
-- **Maps**: use MapLibre with OpenStreetMap tiles; add a routing provider for live guide routes.
-- **Verified guide registry**: this SIH demo uses an admin-approved YatraSetu registry. It must not be presented as government verification without formal registry access or an MoU/data-sharing agreement.
-- **Admin dashboard**: the static dashboard is served at `/`, stores only recent guide coordinates in `LiveLocation`, polls them every 30 seconds, and exposes review, pricing, QR history, SOS, and crowd-report moderation.
-- **Security/deployment**: use HTTPS, production CORS allow-list, rate limits, audit logs, encrypted secrets, database backups, consent and retention policies for live location data.
+## After pulling
 
-The included prediction endpoint is explainable by design: each result returns the numerical estimate and the factors that changed it. It aggregates recent traveller confirmations, day type, holiday/festival input, and weather risk. Replace its heuristic with a trained scikit-learn model after collecting validated crowd reports.
-
-## New migration after verification/map additions
-
-After pulling these changes, run `npm.cmd run prisma:migrate` and then `npm.cmd run prisma:seed`. This creates the cab registry, QR scan audit logs, and live-guide-location tables. The frontend uses MapLibre's demo style for a presentation-ready live-route map; replace that style URL with a MapTiler or self-hosted style before production.
+Run `npm run prisma:migrate` then `npm run prisma:seed` (adds `Payment`, scam columns, `Feedback.spotId`). Prediction service: `pip install -r requirements.txt && python train.py`.

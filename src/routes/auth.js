@@ -4,6 +4,17 @@ const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const auth = require('../middleware/auth');
 
+// Tiny in-memory login throttle (per IP+email, 10 tries/min) — no Redis needed,
+// works on any system and resets on restart. Production: move to Redis.
+const _attempts = new Map();
+function throttle(key, limit = 10, windowMs = 60000) {
+  const now = Date.now();
+  const arr = (_attempts.get(key) || []).filter((t) => now - t < windowMs);
+  arr.push(now);
+  _attempts.set(key, arr);
+  return arr.length > limit;
+}
+
 const credentials = z.object({ name: z.string().min(2).optional(), email: z.string().email(), password: z.string().min(8) });
 const tokenFor = user => jwt.sign({ sub: user.id, role: user.role, name: user.name }, process.env.JWT_SECRET, { expiresIn: '7d' });
 const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, preferences: user.preferences || null });
@@ -43,6 +54,9 @@ router.post('/register', async (req, res, next) => {
 
 router.post('/login', async (req, res, next) => {
   try {
+    if (throttle('login:' + (req.ip || '') + ':' + String(req.body?.email || '').toLowerCase())) {
+      return res.status(429).json({ error: 'Too many sign-in attempts. Wait a minute and retry.', code: 'RATE_LIMITED' });
+    }
     const data = credentials.pick({ email: true, password: true }).parse(req.body);
     const user = await req.app.get('prisma').user.findUnique({ where: { email: data.email } });
     if (!user) return res.status(401).json({ error: 'Incorrect email or password. If you registered with Firebase/Google, use “Continue with Firebase” with the same email, or Register first.', code: 'INVALID_CREDENTIALS' });
@@ -85,7 +99,7 @@ router.get('/firebase-config', async (req, res) => {
  */
 router.post('/firebase', async (req, res, next) => {
   try {
-    const { idToken, name } = z.object({ idToken: z.string().min(10), name: z.string().min(1).max(80).optional() }).parse(req.body);
+    const { idToken, name, fcmToken } = z.object({ idToken: z.string().min(10), name: z.string().min(1).max(80).optional(), fcmToken: z.string().max(255).optional() }).parse(req.body);
     const { getFirebaseAuth, resolveFirebaseIdentity } = require('../services/firebase');
     const firebaseAuth = getFirebaseAuth();
     if (!firebaseAuth) {
@@ -100,6 +114,7 @@ router.post('/firebase', async (req, res, next) => {
     }
     const prisma = req.app.get('prisma');
     let user = await prisma.user.findUnique({ where: { email: identity.email } });
+    const prefsFor = (base) => ({ ...(base || {}), ...(identity.phone ? { phone: identity.phone } : {}), firebaseUid: decoded.uid, ...(fcmToken ? { fcmToken } : {}) });
     if (!user) {
       user = await prisma.user.create({
         data: {
@@ -107,13 +122,13 @@ router.post('/firebase', async (req, res, next) => {
           email: identity.email,
           // Placeholder — real auth is the Firebase ID token. Prefix lets /login explain this.
           passwordHash: 'firebase:' + decoded.uid,
-          ...(identity.phone ? { preferences: { phone: identity.phone, firebaseUid: decoded.uid } } : {}),
+          preferences: prefsFor(null),
         },
       });
-    } else if (identity.phone && !(user.preferences?.phone)) {
-      // Backfill phone on first phone sign-in for an existing email-matched row.
+    } else {
+      // Backfill phone / fcmToken / uid on every Firebase sign-in (Expo + web).
       try {
-        await prisma.user.update({ where: { id: user.id }, data: { preferences: { ...(user.preferences || {}), phone: identity.phone } } });
+        await prisma.user.update({ where: { id: user.id }, data: { preferences: prefsFor(user.preferences) } });
       } catch {}
     }
     res.json({ token: tokenFor(user), user: publicUser(user), firebaseUid: decoded.uid });

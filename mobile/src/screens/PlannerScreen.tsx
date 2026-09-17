@@ -9,10 +9,12 @@ export default function PlannerScreen({ route }: any) {
   const [hotelId, setHotelId] = useState(route.params?.hotelId || '');
   const [start, setStart] = useState('2026-10-12');
   const [end, setEnd] = useState('2026-10-15');
-  const [budget, setBudget] = useState('20000');
+  const [budget, setBudget] = useState(String(route.params?.budget || '20000'));
   const [prefs, setPrefs] = useState('culture, food');
   const [plan, setPlan] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+
+  const clashMessage = 'A plan in that particular duration is already confirmed. Please choose different dates.';
 
   const makePlan = async (override?: { spotId: string }) => {
     try {
@@ -22,6 +24,22 @@ export default function PlannerScreen({ route }: any) {
         Alert.alert('Pick a place', 'Choose a place from Discover first, or paste a Spot ID.');
         return;
       }
+      // Client-side clash check against already-confirmed upcoming trips.
+      try {
+        const mine: any = await api('/api/trips/mine');
+        const ns = new Date(start).getTime();
+        const ne = new Date(end).getTime();
+        const clash = (Array.isArray(mine) ? mine : []).find((t: any) => {
+          if (t.status !== 'CONFIRMED') return false;
+          const s = new Date(t.startDate).getTime();
+          const e = new Date(t.endDate).getTime();
+          return ns <= e && s <= ne;
+        });
+        if (clash) {
+          Alert.alert('Date clash', clashMessage);
+          return;
+        }
+      } catch {}
       const body: any = {
         spotId: sid, startDate: start, endDate: end,
         budget: Number(budget), preferences: prefs.split(',').map((s) => s.trim()).filter(Boolean),
@@ -29,7 +47,13 @@ export default function PlannerScreen({ route }: any) {
       if (hotelId.trim()) body.hotelId = hotelId.trim();
       const p: any = await api('/api/trips/plan', { method: 'POST', body: JSON.stringify(body) });
       setPlan(p);
-    } catch (e: any) { Alert.alert('Planning failed', e.message); } finally { setBusy(false); }
+    } catch (e: any) {
+      if (e?.status === 409 || /already.*confirmed|clash|overlap/i.test(e.message || '')) {
+        Alert.alert('Date clash', clashMessage);
+      } else {
+        Alert.alert('Planning failed', e.message);
+      }
+    } finally { setBusy(false); }
   };
 
   // Auto-build the day-wise itinerary when opened from Discover / a spot.
@@ -45,14 +69,28 @@ export default function PlannerScreen({ route }: any) {
       Alert.alert('Checkout', `${c.quote.guarantee}\n\nTap OK to pay ₹${c.payment.amount} (demo).`, [
         {
           text: 'Pay now', onPress: async () => {
-            const done: any = await api('/api/payments/confirm', { method: 'POST', body: JSON.stringify({ paymentId: c.payment.id }) });
-            Alert.alert('Booked!', done.message);
-            setPlan({ ...plan, booking: done.booking });
+            try {
+              const done: any = await api('/api/payments/confirm', { method: 'POST', body: JSON.stringify({ paymentId: c.payment.id }) });
+              Alert.alert('Booked!', `${done.message}\nFind it under Discover → Your upcoming journeys.`);
+              setPlan({ ...plan, booking: done.booking });
+            } catch (e: any) {
+              if (e?.status === 409 || /already.*confirmed|clash|overlap/i.test(e.message || '')) {
+                Alert.alert('Date clash', clashMessage);
+              } else {
+                Alert.alert('Payment failed', e.message);
+              }
+            }
           },
         },
         { text: 'Cancel', style: 'cancel' },
       ]);
-    } catch (e: any) { Alert.alert('Payment failed', e.message); } finally { setBusy(false); }
+    } catch (e: any) {
+      if (e?.status === 409 || /already.*confirmed|clash|overlap/i.test(e.message || '')) {
+        Alert.alert('Date clash', clashMessage);
+      } else {
+        Alert.alert('Payment failed', e.message);
+      }
+    } finally { setBusy(false); }
   };
 
   return (

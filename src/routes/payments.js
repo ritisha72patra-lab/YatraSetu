@@ -64,9 +64,26 @@ router.post('/confirm', async (req, res, next) => {
   try {
     const data = z.object({ paymentId: z.string(), providerPaymentId: z.string().max(80).optional(), fail: z.boolean().optional().default(false) }).parse(req.body);
     const prisma = req.app.get('prisma');
-    const payment = await prisma.payment.findUnique({ where: { id: data.paymentId }, include: { booking: true } });
+    const payment = await prisma.payment.findUnique({ where: { id: data.paymentId }, include: { booking: { include: { spot: true } } } });
     if (!payment || payment.booking.touristId !== req.user.sub) return res.status(404).json({ error: 'Payment not found' });
     if (payment.status === 'PAID') return res.json({ payment, message: 'Already paid.' });
+    // Block double-booking: another CONFIRMED trip overlapping these dates.
+    const clash = await prisma.booking.findFirst({
+      where: {
+        touristId: req.user.sub,
+        status: 'CONFIRMED',
+        id: { not: payment.bookingId },
+        AND: [{ startDate: { lte: payment.booking.endDate } }, { endDate: { gte: payment.booking.startDate } }],
+      },
+      include: { spot: true },
+    });
+    if (clash) {
+      return res.status(409).json({
+        error: `A plan in that particular duration is already confirmed (${clash.spot?.name || 'trip'} ${String(clash.startDate).slice(0, 10)} → ${String(clash.endDate).slice(0, 10)}). Please choose different dates.`,
+        code: 'DATE_CLASH',
+        clashBookingId: clash.id,
+      });
+    }
     if (data.fail) {
       const failed = await prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED' } });
       return res.json({ payment: failed, message: 'Payment marked as failed. Try again.' });

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator, RefreshControl, Image, TextInput, ScrollView } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, RefreshControl, Image, TextInput, ScrollView, Alert } from 'react-native';
 import { api } from '../lib/api';
 import { Screen } from '../lib/Screen';
 import { theme } from '../theme';
@@ -11,17 +11,24 @@ const TYPE_COLORS: Record<string, string> = {
   'Hill Station': '#15803d',
 };
 
-function Meter({ value, label, sub, status, warn }: { value: string; label: string; sub: string; status: string; warn?: boolean }) {
-  return (
-    <View style={s.metric}>
-      <View style={s.meter}><Text style={s.meterT}>{value}</Text></View>
-      <View style={{ flex: 1 }}>
-        <Text style={s.metricB}>{label}</Text>
-        <Text style={s.metricS}>{sub}</Text>
-      </View>
-      <Text style={[s.status, warn && s.statusWarn]}>{status}</Text>
-    </View>
-  );
+function overlaps(a: any, b: any) {
+  const s1 = new Date(a.startDate).getTime();
+  const e1 = new Date(a.endDate).getTime();
+  const s2 = new Date(b.startDate).getTime();
+  const e2 = new Date(b.endDate).getTime();
+  return s1 <= e2 && s2 <= e1;
+}
+
+function findClashes(trips: any[]) {
+  const clashes: string[] = [];
+  for (let i = 0; i < trips.length; i++) {
+    for (let j = i + 1; j < trips.length; j++) {
+      if (overlaps(trips[i], trips[j])) {
+        clashes.push(`${trips[i].spot?.name || 'Trip'} (${String(trips[i].startDate).slice(0, 10)}→${String(trips[i].endDate).slice(0, 10)}) clashes with ${trips[j].spot?.name || 'Trip'} (${String(trips[j].startDate).slice(0, 10)}→${String(trips[j].endDate).slice(0, 10)})`);
+      }
+    }
+  }
+  return clashes;
 }
 
 export default function DiscoverScreen({ navigation }: any) {
@@ -30,9 +37,11 @@ export default function DiscoverScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
-  const [env, setEnv] = useState<any>(null);
-  const [trip, setTrip] = useState<any>(null);
-  const [guide, setGuide] = useState<any>(null);
+  const [trips, setTrips] = useState<any[]>([]);
+  const [openTrip, setOpenTrip] = useState<string | null>(null);
+  const [guideReason, setGuideReason] = useState('');
+  const [guideFormFor, setGuideFormFor] = useState<string | null>(null);
+  const [sendingReq, setSendingReq] = useState(false);
 
   const load = async () => {
     try {
@@ -46,22 +55,11 @@ export default function DiscoverScreen({ navigation }: any) {
         spots = d.items || [];
       }
       setItems(spots);
-      if (spots.length) {
-        const s0 = spots[0];
-        try {
-          setEnv(await api(`/api/spots/environment?latitude=${s0.latitude}&longitude=${s0.longitude}`, {}, false));
-        } catch {}
-        try {
-          const g: any = await api(`/api/spots/${s0.id}/guides`, {}, false);
-          const list = g.guides || [];
-          setGuide(list.find((x: any) => x.availableOnDate) || list[0] || null);
-        } catch {}
-      }
       try {
-        const trips: any = await api('/api/trips/mine');
-        setTrip((trips || []).find((t: any) => t.status === 'CONFIRMED') || trips[0] || null);
+        const t: any = await api('/api/trips/mine');
+        setTrips(Array.isArray(t) ? t : []);
       } catch {
-        setTrip(null);
+        setTrips([]);
       }
     } finally {
       setLoading(false);
@@ -76,9 +74,52 @@ export default function DiscoverScreen({ navigation }: any) {
   const filtered = q
     ? items.filter((i) => `${i.name} ${i.city} ${i.state} ${i.placeType}`.toLowerCase().includes(q.toLowerCase()))
     : items;
-  const hero = items[0];
-  const crowd = Number(hero?.liveCrowd ?? 3);
-  const crowdPct = Math.round((crowd / 5) * 100);
+
+  const now = new Date();
+  const upcoming = trips
+    .filter((t: any) => t.status === 'CONFIRMED' && new Date(t.endDate) >= now)
+    .sort((a: any, b: any) => +new Date(a.startDate) - +new Date(b.startDate));
+  const clashes = findClashes(upcoming);
+  // Guide appears on home only after booking is over (CONFIRMED booking with guide).
+  const bookedGuides = upcoming.filter((t: any) => t.guide);
+
+  const sendGuideChange = async (bookingId: string) => {
+    if (!guideReason.trim() || guideReason.trim().length < 5) {
+      Alert.alert('Add a reason', 'Please write at least 5 characters so the admin can review.');
+      return;
+    }
+    try {
+      setSendingReq(true);
+      await api('/api/requests/guide-change', {
+        method: 'POST',
+        body: JSON.stringify({ bookingId, reason: guideReason.trim() }),
+      });
+      setGuideReason('');
+      setGuideFormFor(null);
+      Alert.alert('Sent', 'Guide change request sent to the admin.');
+    } catch (e: any) {
+      Alert.alert('Request failed', e.message);
+    } finally {
+      setSendingReq(false);
+    }
+  };
+
+  const cancelTrip = async (id: string) => {
+    Alert.alert('Cancel trip?', 'This will remove the trip from Upcoming journeys and My trips.', [
+      { text: 'Keep', style: 'cancel' },
+      {
+        text: 'Cancel trip',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api(`/api/trips/${id}/cancel`, { method: 'PUT' });
+            Alert.alert('Cancelled', 'Trip cancelled.');
+            load();
+          } catch (e: any) { Alert.alert('Cancel failed', e.message); }
+        },
+      },
+    ]);
+  };
 
   return (
     <Screen padded={false}>
@@ -94,9 +135,9 @@ export default function DiscoverScreen({ navigation }: any) {
         <Text style={s.tagline}>YatraSetu · Your Bridge to a Safer Journey{user ? ` · Namaste, ${user.name.split(' ')[0]} 👋` : ''}</Text>
         <View style={s.searchBar}>
           <TextInput style={s.searchInput} placeholder="Search Jaipur, Goa, Manali…" value={q} onChangeText={setQ} placeholderTextColor={theme.muted} />
-          <Pressable style={s.searchBtn} onPress={() => navigation.navigate('Planner', { spotId: filtered[0]?.id || '', spotName: filtered[0]?.name || '' })}>
-            <Text style={s.searchBtnT}>Let's plan →</Text>
-          </Pressable>
+          <View style={s.searchBtn}>
+            <Text style={s.searchBtnT}>Search</Text>
+          </View>
         </View>
       </View>
 
@@ -104,7 +145,7 @@ export default function DiscoverScreen({ navigation }: any) {
         <ActivityIndicator style={{ marginTop: 20 }} />
       ) : (
         <>
-          {/* Handpicked cards with photos */}
+          {/* Handpicked cards with photos — tap a place for weather/AQI/crowd + hotels */}
           <View style={s.rowBetween}>
             <Text style={s.h2}>Handpicked for your vibe</Text>
             <Text style={s.count}>{filtered.length} places</Text>
@@ -124,56 +165,102 @@ export default function DiscoverScreen({ navigation }: any) {
               {item.cheapestHotel && (
                 <Text style={s.hotel}>Stay from ₹{Number(item.cheapestHotel.pricePerNight).toLocaleString('en-IN')}/night · {item.cheapestHotel.name}</Text>
               )}
+              <Text style={s.tapHint}>Tap for weather · AQI · crowd · hotels →</Text>
             </Pressable>
           ))}
           {filtered.length === 0 && <Text style={s.empty}>No places match "{q}".</Text>}
 
-          {/* Travel intelligence */}
-          {hero && (
-            <View style={s.panel}>
-              <View style={s.rowBetween}>
-                <Text style={s.h2}>Travel intelligence</Text>
-                <Text style={s.live}>● LIVE</Text>
-              </View>
-              <Meter value={`${crowdPct}%`} label={`${hero.name} crowd forecast`} sub={`${crowd >= 4 ? 'High' : crowd >= 3 ? 'Moderate' : 'Easy'} · Best visit: ${hero.bestVisitTime || '8–10 AM'}`} status={crowd >= 4 ? 'Expect rush' : crowd >= 3 ? 'Plan ahead' : 'Easy going'} warn={crowd === 3} />
-              <Meter value={env ? String(env.aqi) : '–'} label={`${hero.name} air quality`} sub={env ? `${env.aqiLabel || 'Good'} · ${env.weather || ''} · ${env.temperature || ''}°C` : 'Live AQI'} status={env && Number(env.aqi) > 100 ? 'Take care' : 'Healthy'} warn={env && Number(env.aqi) > 100} />
-              <Meter value={`${hero.safetyScore}%`} label={`${hero.name} safety score`} sub={`Verified routes in ${hero.state} · SOS support`} status={hero.safetyScore >= 85 ? 'Safe' : 'Mostly safe'} />
+          {/* Upcoming journeys — every CONFIRMED future trip, expandable day plan */}
+          <Text style={s.h2}>Your upcoming journeys</Text>
+          {clashes.length > 0 && (
+            <View style={s.clashBox}>
+              <Text style={s.clashH}>⚠ A plan in that particular duration is already confirmed.</Text>
+              {clashes.map((c, i) => <Text key={i} style={s.clashT}>• {c}</Text>)}
             </View>
           )}
-
-          {/* Upcoming journey */}
-          <Text style={s.h2}>Your upcoming journey</Text>
-          {trip ? (
-            <Pressable style={s.tripCard} onPress={() => navigation.navigate('Planner', { spotId: trip.spotId, spotName: trip.spot?.name })}>
-              <View style={s.dayBadge}>
-                <Text style={s.dayNum}>{String(trip.startDate).slice(8, 10)}</Text>
-                <Text style={s.dayMon}>{String(trip.startDate).slice(5, 7)}/{String(trip.startDate).slice(0, 4)}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.tripTitle}>{trip.spot?.name} discovery</Text>
-                <Text style={s.tripSub}>{String(trip.startDate).slice(0, 10)} → {String(trip.endDate).slice(0, 10)} · ₹{Number(trip.budget).toLocaleString('en-IN')} budget · {trip.status}</Text>
-                {trip.hotel && <Text style={s.tripSub}>Hotel: {trip.hotel.name}</Text>}
-              </View>
-            </Pressable>
-          ) : (
+          {upcoming.length === 0 ? (
             <Pressable style={s.tripCard} onPress={() => navigation.navigate('Planner', { spotId: items[0]?.id || '', spotName: items[0]?.name || '' })}>
               <View style={{ flex: 1 }}>
                 <Text style={s.tripTitle}>No trip yet — build your day-wise plan</Text>
-                <Text style={s.tripSub}>Timed itinerary: breakfast → attractions → sunset → dinner → hotel</Text>
+                <Text style={s.tripSub}>Book a trip and it will appear here with its day-wise plan.</Text>
               </View>
             </Pressable>
+          ) : (
+            upcoming.map((trip: any) => (
+              <View key={trip.id} style={s.tripCard}>
+                <Pressable
+                  style={s.tripHead}
+                  onPress={() => setOpenTrip(openTrip === trip.id ? null : trip.id)}
+                >
+                  <View style={s.dayBadge}>
+                    <Text style={s.dayNum}>{String(trip.startDate).slice(8, 10)}</Text>
+                    <Text style={s.dayMon}>{String(trip.startDate).slice(5, 7)}/{String(trip.startDate).slice(0, 4)}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.tripTitle}>{trip.spot?.name} journey {openTrip === trip.id ? '▲' : '▼'}</Text>
+                    <Text style={s.tripSub}>{String(trip.startDate).slice(0, 10)} → {String(trip.endDate).slice(0, 10)} · ₹{Number(trip.budget).toLocaleString('en-IN')} budget · {trip.status}</Text>
+                    {trip.hotel && <Text style={s.tripSub}>Hotel: {trip.hotel.name}</Text>}
+                  </View>
+                </Pressable>
+                {openTrip === trip.id && (
+                  <View style={s.planBox}>
+                    {(trip.itinerary?.roadmap || []).length === 0 && (
+                      <Text style={s.tripSub}>Day-wise plan will appear here once planned.</Text>
+                    )}
+                    {(trip.itinerary?.roadmap || []).map((d: any) => (
+                      <View key={d.day} style={s.planDay}>
+                        <Text style={s.planDayH}>Day {d.day} · {d.date || ''} — {d.dayTitle || d.title || ''}</Text>
+                        {(d.slots || []).map((sl: any, i: number) => (
+                          <Text key={i} style={s.slotT}>• {sl.time} — {sl.activity} ({sl.mode} · ~₹{sl.spend})</Text>
+                        ))}
+                        {d.note ? <Text style={s.slotReason}>{d.note}</Text> : null}
+                        {d.reason ? <Text style={s.slotReason}>{d.reason}</Text> : null}
+                      </View>
+                    ))}
+                  </View>
+                )}
+                <Pressable style={s.cancelBtn} onPress={() => cancelTrip(trip.id)}>
+                  <Text style={s.cancelBtnT}>Cancel trip</Text>
+                </Pressable>
+              </View>
+            ))
           )}
 
-          {/* Guide */}
-          {guide && (
+          {/* Guide — only after booking is confirmed */}
+          {bookedGuides.length > 0 && (
             <>
               <Text style={s.h2}>Meet your local guide</Text>
-              <View style={s.guideCard}>
-                <Text style={s.guideHead}>Registry-approved & ready for your trip</Text>
-                <Text style={s.guideName}>{guide.guideName} ✓</Text>
-                <Text style={s.guideSub}>★ {guide.rating} · ₹{guide.officialDailyRate}/day · {(guide.languages || []).join(', ')}</Text>
-                <Text style={s.verified}>YATRASETU REGISTRY · {guide.availableOnDate ? 'AVAILABLE' : 'CHECK DATES'}</Text>
-              </View>
+              {bookedGuides.map((t: any) => (
+                <View key={t.id} style={s.guideCard}>
+                  <Text style={s.guideHead}>{t.spot?.name} · Registry-approved & ready for your trip</Text>
+                  <Text style={s.guideName}>{t.guide.user?.name || 'Guide'} ✓</Text>
+                  <Text style={s.guideSub}>₹{t.agreedRate || t.guide.officialDailyRate}/day · {(t.guide.languages || []).join(', ')}</Text>
+                  <Text style={s.verified}>YATRASETU REGISTRY · CONFIRMED BOOKING</Text>
+                  {guideFormFor === t.id ? (
+                    <View style={{ marginTop: 10 }}>
+                      <TextInput
+                        style={s.guideInput}
+                        placeholder="Reason for changing guide (min 5 chars)…"
+                        value={guideReason}
+                        onChangeText={setGuideReason}
+                        multiline
+                      />
+                      <View style={s.guideBtnRow}>
+                        <Pressable style={s.guideSend} onPress={() => sendGuideChange(t.id)} disabled={sendingReq}>
+                          <Text style={s.guideSendT}>{sendingReq ? 'Sending…' : 'Send request'}</Text>
+                        </Pressable>
+                        <Pressable style={s.guideCancel} onPress={() => { setGuideFormFor(null); setGuideReason(''); }}>
+                          <Text style={s.guideCancelT}>Cancel</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : (
+                    <Pressable style={s.guideBtn} onPress={() => setGuideFormFor(t.id)}>
+                      <Text style={s.guideBtnT}>Request guide change</Text>
+                    </Pressable>
+                  )}
+                </View>
+              ))}
             </>
           )}
         </>
@@ -197,7 +284,6 @@ const s = StyleSheet.create({
   h2: { fontSize: 17, fontWeight: '800', color: theme.ink, marginTop: 18, marginHorizontal: 16 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginRight: 16 },
   count: { fontSize: 11, color: theme.muted, marginTop: 18 },
-  live: { fontSize: 10, fontWeight: '800', color: theme.ok, marginTop: 18, marginRight: 16 },
   card: { backgroundColor: '#fff', borderRadius: 15, marginHorizontal: 16, marginTop: 12, borderWidth: 1, borderColor: theme.line, overflow: 'hidden', paddingBottom: 12 },
   img: { height: 150, width: '100%' },
   imgFallback: { backgroundColor: theme.line },
@@ -209,24 +295,36 @@ const s = StyleSheet.create({
   stars: { color: '#e6a23d', fontWeight: '800', fontSize: 12 },
   price: { color: theme.muted, fontSize: 12 },
   hotel: { fontSize: 12, color: theme.ok, fontWeight: '700', marginTop: 4, marginHorizontal: 12 },
+  tapHint: { fontSize: 11, color: theme.teal, fontWeight: '700', marginTop: 6, marginHorizontal: 12 },
   empty: { textAlign: 'center', color: theme.muted, marginTop: 20 },
-  panel: { backgroundColor: '#fff', borderRadius: 16, marginHorizontal: 16, marginTop: 18, borderWidth: 1, borderColor: theme.line, padding: 14 },
-  metric: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.line, marginTop: 6 },
-  meter: { width: 52, height: 52, borderRadius: 26, backgroundColor: theme.paper, borderWidth: 3, borderColor: theme.teal, justifyContent: 'center', alignItems: 'center' },
-  meterT: { fontSize: 12, fontWeight: '800', color: theme.tealDark },
-  metricB: { fontSize: 13, fontWeight: '800', color: theme.ink },
-  metricS: { fontSize: 11, color: theme.muted, marginTop: 2 },
-  status: { fontSize: 10, fontWeight: '800', backgroundColor: '#e2f7ec', color: theme.ok, paddingVertical: 5, paddingHorizontal: 8, borderRadius: 6 },
-  statusWarn: { backgroundColor: '#fff4d9', color: theme.warn },
-  tripCard: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 16, marginHorizontal: 16, marginTop: 10, borderWidth: 1, borderColor: theme.line, padding: 14, alignItems: 'center', gap: 12 },
+  tripCard: { backgroundColor: '#fff', borderRadius: 16, marginHorizontal: 16, marginTop: 10, borderWidth: 1, borderColor: theme.line, padding: 14 },
+  tripHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   dayBadge: { backgroundColor: theme.teal, borderRadius: 12, width: 64, height: 64, justifyContent: 'center', alignItems: 'center' },
   dayNum: { color: '#fff', fontSize: 20, fontWeight: '800' },
   dayMon: { color: '#fff', fontSize: 10 },
   tripTitle: { fontWeight: '800', color: theme.ink, fontSize: 14 },
   tripSub: { fontSize: 11, color: theme.muted, marginTop: 3 },
+  planBox: { marginTop: 10, backgroundColor: theme.paper, borderRadius: 10, padding: 10 },
+  planDay: { marginTop: 8 },
+  planDayH: { fontWeight: '800', color: theme.tealDark, fontSize: 12 },
+  slotT: { fontSize: 12, color: theme.ink, marginTop: 3 },
+  slotReason: { fontSize: 11, color: theme.muted, marginTop: 2 },
+  cancelBtn: { marginTop: 10, borderWidth: 1, borderColor: theme.line, borderRadius: 10, padding: 10, alignItems: 'center', backgroundColor: '#fff' },
+  cancelBtnT: { color: theme.danger, fontWeight: '800', fontSize: 12 },
+  clashBox: { backgroundColor: '#fdecec', borderRadius: 12, marginHorizontal: 16, marginTop: 10, padding: 12, borderWidth: 1, borderColor: '#f5c2c2' },
+  clashH: { fontWeight: '800', color: theme.danger, fontSize: 13 },
+  clashT: { fontSize: 11, color: theme.danger, marginTop: 4 },
   guideCard: { backgroundColor: theme.tealDark, borderRadius: 16, marginHorizontal: 16, marginTop: 10, padding: 16 },
   guideHead: { color: '#fff', fontSize: 13, fontWeight: '800' },
   guideName: { color: '#fff', fontSize: 15, fontWeight: '800', marginTop: 10 },
   guideSub: { color: 'rgba(255,255,255,.75)', fontSize: 11, marginTop: 3 },
   verified: { color: '#8fe1d7', fontSize: 10, fontWeight: '800', marginTop: 6 },
+  guideBtn: { marginTop: 10, backgroundColor: '#fff', borderRadius: 10, padding: 11, alignItems: 'center' },
+  guideBtnT: { color: theme.tealDark, fontWeight: '800', fontSize: 12 },
+  guideInput: { backgroundColor: '#fff', borderRadius: 10, padding: 10, fontSize: 12, minHeight: 60, textAlignVertical: 'top' },
+  guideBtnRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  guideSend: { flex: 1, backgroundColor: theme.coral, borderRadius: 10, padding: 11, alignItems: 'center' },
+  guideSendT: { color: '#fff', fontWeight: '800', fontSize: 12 },
+  guideCancel: { flex: 1, backgroundColor: 'rgba(255,255,255,.2)', borderRadius: 10, padding: 11, alignItems: 'center' },
+  guideCancelT: { color: '#fff', fontWeight: '800', fontSize: 12 },
 });

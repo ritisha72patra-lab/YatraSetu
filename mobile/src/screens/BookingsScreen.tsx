@@ -13,7 +13,9 @@ export default function BookingsScreen() {
   const load = async () => {
     try {
       setRefreshing(true);
-      setTrips(await api('/api/trips/mine'));
+      const all: any = await api('/api/trips/mine');
+      // Cancelled trips disappear from My trips.
+      setTrips((Array.isArray(all) ? all : []).filter((t: any) => t.status !== 'CANCELLED'));
     } catch (e: any) { Alert.alert('Failed', e.message); } finally { setRefreshing(false); }
   };
   useFocusEffect(useCallback(() => { load(); }, []));
@@ -25,6 +27,23 @@ export default function BookingsScreen() {
       Alert.alert('Booked!', done.message);
       load();
     } catch (e: any) { Alert.alert('Payment failed', e.message); }
+  };
+
+  const cancelTrip = async (id: string) => {
+    Alert.alert('Cancel trip?', 'This will remove the trip from My trips and Upcoming journeys.', [
+      { text: 'Keep', style: 'cancel' },
+      {
+        text: 'Cancel trip',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api(`/api/trips/${id}/cancel`, { method: 'PUT' });
+            Alert.alert('Cancelled', 'Trip cancelled.');
+            load();
+          } catch (e: any) { Alert.alert('Cancel failed', e.message); }
+        },
+      },
+    ]);
   };
 
   return (
@@ -69,6 +88,9 @@ export default function BookingsScreen() {
             {item.paymentStatus !== 'PAID' && (
               <Pressable style={s.book} onPress={() => pay(item.id)}><Text style={s.bookT}>Book now / Pay</Text></Pressable>
             )}
+            {(item.status === 'DRAFT' || item.status === 'CONFIRMED') && (
+              <Pressable style={s.cancel} onPress={() => cancelTrip(item.id)}><Text style={s.cancelT}>Cancel trip</Text></Pressable>
+            )}
           </View>
         )}
         ListEmptyComponent={<Text style={s.empty}>No trips yet — plan one from Discover.</Text>}
@@ -85,6 +107,8 @@ const s = StyleSheet.create({
   meta: { fontSize: 12, color: theme.muted, marginTop: 3 },
   book: { backgroundColor: theme.coral, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8 },
   bookT: { color: '#fff', fontWeight: '800' },
+  cancel: { borderWidth: 1, borderColor: theme.line, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8, backgroundColor: '#fff' },
+  cancelT: { color: theme.danger, fontWeight: '800' },
   planBtn: { marginTop: 8, alignItems: 'center', padding: 8, borderWidth: 1, borderColor: theme.teal, borderRadius: 10 },
   planBtnT: { color: theme.teal, fontWeight: '800', fontSize: 12 },
   planBox: { marginTop: 8, backgroundColor: theme.paper, borderRadius: 10, padding: 10 },

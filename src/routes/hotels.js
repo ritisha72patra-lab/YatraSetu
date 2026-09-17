@@ -118,6 +118,21 @@ router.post('/book', async (req, res, next) => {
       guideId: z.string().optional(),
     }).parse(req.body);
     const prisma = req.app.get('prisma');
+    const clash = await prisma.booking.findFirst({
+      where: {
+        touristId: req.user.sub,
+        status: 'CONFIRMED',
+        AND: [{ startDate: { lte: data.endDate } }, { endDate: { gte: data.startDate } }],
+      },
+      include: { spot: true },
+    });
+    if (clash) {
+      return res.status(409).json({
+        error: `A plan in that particular duration is already confirmed (${clash.spot?.name || 'trip'} ${String(clash.startDate).slice(0, 10)} → ${String(clash.endDate).slice(0, 10)}). Please choose different dates.`,
+        code: 'DATE_CLASH',
+        clashBookingId: clash.id,
+      });
+    }
     const hotel = await prisma.hotel.findUnique({ where: { id: data.hotelId }, include: { spot: true } });
     if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
     const days = tripDays(data.startDate, data.endDate);

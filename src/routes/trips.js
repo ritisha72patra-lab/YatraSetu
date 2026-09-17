@@ -15,12 +15,31 @@ const trip = z.object({
   preferences: z.array(z.string()).default([])
 });
 
+// Clash helper: a CONFIRMED booking overlapping [start, end] blocks a new plan.
+async function findClashingConfirmed(prisma, touristId, startDate, endDate, excludeId) {
+  const where = {
+    touristId,
+    status: 'CONFIRMED',
+    AND: [{ startDate: { lte: new Date(endDate) } }, { endDate: { gte: new Date(startDate) } }],
+  };
+  if (excludeId) where.id = { not: excludeId };
+  return prisma.booking.findFirst({ where, include: { spot: true } });
+}
+
 // POST /api/trips/plan — smart day-wise plan (weather/crowd/safety/AQI aware)
 // + minimum-price quote + Book Now payload. Keeps old response shape and adds more.
 router.post('/plan', async (req, res, next) => {
   try {
     const data = trip.parse(req.body);
     const prisma = req.app.get('prisma');
+    const clash = await findClashingConfirmed(prisma, req.user.sub, data.startDate, data.endDate);
+    if (clash) {
+      return res.status(409).json({
+        error: `A plan in that particular duration is already confirmed (${clash.spot?.name || 'trip'} ${String(clash.startDate).slice(0, 10)} → ${String(clash.endDate).slice(0, 10)}). Please choose different dates.`,
+        code: 'DATE_CLASH',
+        clashBookingId: clash.id,
+      });
+    }
     global.__ysPrismaForPlanner = prisma;
     const spot = await prisma.touristSpot.findUnique({ where: { id: data.spotId } });
     if (!spot) return res.status(404).json({ error: 'Spot not found' });
@@ -129,6 +148,14 @@ router.put('/:id/confirm', async (req, res, next) => {
     if (booking.paymentStatus !== 'PAID') {
       return res.status(402).json({ error: 'Payment required before confirming. Call POST /api/payments/create then /api/payments/confirm (Book Now).', code: 'PAYMENT_REQUIRED', bookingId: booking.id });
     }
+    const clash = await findClashingConfirmed(prisma, req.user.sub, booking.startDate, booking.endDate, booking.id);
+    if (clash) {
+      return res.status(409).json({
+        error: `A plan in that particular duration is already confirmed (${clash.spot?.name || 'trip'} ${String(clash.startDate).slice(0, 10)} → ${String(clash.endDate).slice(0, 10)}). Please choose different dates.`,
+        code: 'DATE_CLASH',
+        clashBookingId: clash.id,
+      });
+    }
     const updated = await prisma.booking.update({
       where: { id: booking.id },
       data: { status: 'CONFIRMED' },
@@ -137,5 +164,25 @@ router.put('/:id/confirm', async (req, res, next) => {
     res.json({ booking: updated, message: 'Trip confirmed. Your final roadmap and timings are ready and your guide will receive the plan.' });
   } catch (e) { next(e); }
 });
+
+// Cancel a DRAFT or CONFIRMED trip. Cancelled trips are hidden on the app
+// (My trips + Upcoming journeys filter out CANCELLED).
+async function cancelBooking(req, res, next) {
+  try {
+    const prisma = req.app.get('prisma');
+    const booking = await prisma.booking.findFirst({ where: { id: req.params.id, touristId: req.user.sub } });
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    if (booking.status === 'CANCELLED') return res.json({ booking, message: 'Trip is already cancelled.' });
+    const updated = await prisma.booking.update({
+      where: { id: booking.id },
+      data: { status: 'CANCELLED' },
+      include: { spot: true, hotel: true, guide: { include: { user: true } } },
+    });
+    res.json({ booking: updated, message: 'Trip cancelled. It will no longer appear in My trips or Upcoming journeys.' });
+  } catch (e) { next(e); }
+}
+
+router.put('/:id/cancel', cancelBooking);
+router.delete('/:id', cancelBooking);
 
 module.exports = router;

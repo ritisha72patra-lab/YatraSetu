@@ -17,6 +17,89 @@ function km(a: any, b: any): string | null {
   return (2 * R * Math.asin(Math.sqrt(s))).toFixed(1);
 }
 
+// Optional real map (react-native-maps works in Expo Go). Falls back to a
+// lightweight custom map below when the package isn't installed.
+let RNMapView: any = null;
+let RNMarker: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const m = require('react-native-maps');
+  RNMapView = m.default || m.MapView;
+  RNMarker = m.Marker;
+} catch {
+  RNMapView = null;
+}
+
+function LiveMap({ me, guideLoc, guideNote }: { me: any; guideLoc: any; guideNote: string }) {
+  if (!me) {
+    return (
+      <View style={s.mapFallback}>
+        <Text style={s.mapPlaceholder}>Tap “Locate me” to show your live map.</Text>
+      </View>
+    );
+  }
+  if (RNMapView && RNMarker) {
+    const region = {
+      latitude: guideLoc ? (me.latitude + guideLoc.latitude) / 2 : me.latitude,
+      longitude: guideLoc ? (me.longitude + guideLoc.longitude) / 2 : me.longitude,
+      latitudeDelta: 0.05,
+      longitudeDelta: 0.05,
+    };
+    return (
+      <View style={s.mapBox}>
+        <RNMapView style={s.map} initialRegion={region} region={region}>
+          <RNMarker coordinate={{ latitude: me.latitude, longitude: me.longitude }} title="You" pinColor="#1a7fe0" />
+          {guideLoc ? (
+            <RNMarker coordinate={{ latitude: Number(guideLoc.latitude), longitude: Number(guideLoc.longitude) }} title="Guide" pinColor="#ed5b43" />
+          ) : null}
+        </RNMapView>
+        {!guideLoc ? <Text style={s.mapWarn}>Guide location isn't available right now. {guideNote}</Text> : null}
+      </View>
+    );
+  }
+  // Fallback custom map — no native dependency, works on any system.
+  const pts = [me, guideLoc].filter(Boolean);
+  const lats = pts.map((p: any) => Number(p.latitude));
+  const lons = pts.map((p: any) => Number(p.longitude));
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons);
+  const maxLon = Math.max(...lons);
+  const spanLat = Math.max(0.001, maxLat - minLat);
+  const spanLon = Math.max(0.001, maxLon - minLon);
+  const toXY = (p: any) => ({
+    // 12%..88% so dots never sit on the border
+    left: `${12 + ((Number(p.longitude) - minLon) / spanLon) * 76}%` as any,
+    top: `${12 + (1 - (Number(p.latitude) - minLat) / spanLat) * 76}%` as any,
+  });
+  const meXY = toXY(me);
+  const guideXY = guideLoc ? toXY(guideLoc) : null;
+  return (
+    <View style={s.mapBox}>
+      <View style={s.mapFallback}>
+        <Text style={s.mapGrid}>MAP · live positions</Text>
+        <View style={[s.mapDot, s.mapDotMe, { left: meXY.left, top: meXY.top }]} />
+        <View style={[s.mapTag, { left: meXY.left, top: meXY.top }]}>
+          <Text style={s.mapTagT}>You</Text>
+        </View>
+        {guideLoc && guideXY ? (
+          <>
+            <View style={[s.mapDot, s.mapDotGuide, { left: guideXY.left, top: guideXY.top }]} />
+            <View style={[s.mapTag, { left: guideXY.left, top: guideXY.top }]}>
+              <Text style={s.mapTagT}>Guide</Text>
+            </View>
+          </>
+        ) : null}
+      </View>
+      {!guideLoc ? (
+        <Text style={s.mapWarn}>Guide location isn't available right now. {guideNote}</Text>
+      ) : (
+        <Text style={s.mapOk}>Showing you + guide on the live map.</Text>
+      )}
+    </View>
+  );
+}
+
 export default function SafetyScreen() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [help, setHelp] = useState<any>(null);
@@ -137,6 +220,7 @@ export default function SafetyScreen() {
                 <Text style={s.pinT}>You: {me ? `${Number(me.latitude).toFixed(4)}, ${Number(me.longitude).toFixed(4)}` : 'tap below to locate'}</Text>
               </View>
               {dist && <Text style={s.dist}>Distance between you: ~{dist} km</Text>}
+              <LiveMap me={me} guideLoc={guideLoc} guideNote={guideNote} />
               <View style={s.btnRow}>
                 <Pressable style={s.locBtn} onPress={() => locateMe(false)}><Text style={s.locBtnT}>◎ Locate me</Text></Pressable>
                 {sharing ? (
@@ -185,6 +269,18 @@ const s = StyleSheet.create({
   stopBtnT: { color: '#fff', fontWeight: '800', fontSize: 12 },
   refreshBtn: { marginTop: 8, alignItems: 'center', padding: 6 },
   refreshBtnT: { color: '#8fe1d7', fontSize: 11, fontWeight: '700' },
+  mapBox: { marginTop: 10, borderRadius: 12, overflow: 'hidden', backgroundColor: '#e8f1f0' },
+  map: { width: '100%', height: 220 },
+  mapFallback: { width: '100%', height: 220, backgroundColor: '#e8f1f0', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,.4)', justifyContent: 'center', alignItems: 'center' },
+  mapGrid: { position: 'absolute', top: 8, fontSize: 10, fontWeight: '800', color: '#5b7a7d', letterSpacing: 1 },
+  mapDot: { position: 'absolute', width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: '#fff', marginLeft: -8, marginTop: -8 },
+  mapDotMe: { backgroundColor: '#1a7fe0' },
+  mapDotGuide: { backgroundColor: '#ed5b43' },
+  mapTag: { position: 'absolute', marginLeft: -14, marginTop: 12, backgroundColor: '#fff', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  mapTagT: { fontSize: 10, fontWeight: '800', color: theme.tealDark },
+  mapPlaceholder: { color: '#41666a', fontSize: 12, fontWeight: '700', paddingHorizontal: 20, textAlign: 'center' },
+  mapWarn: { backgroundColor: '#fff4d9', color: '#7a5b00', fontSize: 11, fontWeight: '700', padding: 8, textAlign: 'center' },
+  mapOk: { backgroundColor: '#e2f7ec', color: theme.ok, fontSize: 11, fontWeight: '700', padding: 8, textAlign: 'center' },
   sosCard: { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginTop: 10, borderWidth: 1, borderColor: theme.line },
   sosH: { fontWeight: '800', color: theme.danger },
   input: { borderWidth: 1, borderColor: theme.line, borderRadius: 10, padding: 10, marginTop: 8, backgroundColor: '#fff' },

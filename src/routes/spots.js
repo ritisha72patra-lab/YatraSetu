@@ -1,64 +1,157 @@
 const router = require('express').Router();
 const { getCrowdPrediction } = require('../services/prediction');
+const { getEnvironment } = require('../services/environment');
+const { computeTripTotal } = require('../services/pricing');
 const { z } = require('zod');
 
-function envFallback() {
-  return { aqi: 42, aqiLabel: 'Good', temperature: 28, weather: 'Clear skies', source: 'demo-fallback', updatedAt: new Date().toISOString() };
+// Personalised search aliases (feature 5): beach, hill station, etc.
+const TYPE_ALIASES = {
+  beach: ['beach', 'island', 'coast', 'backwaters'],
+  'hill station': ['mountains', 'nature', 'wellness', 'tea'],
+  hills: ['mountains', 'nature', 'wellness', 'tea'],
+  mountain: ['mountains', 'nature', 'adventure'],
+  heritage: ['heritage', 'culture', 'history'],
+  culture: ['culture', 'heritage', 'spirituality', 'food'],
+  adventure: ['adventure', 'wildlife', 'nature'],
+  wildlife: ['wildlife', 'nature', 'adventure'],
+  wellness: ['wellness', 'nature', 'backwaters'],
+  food: ['food', 'culture'],
+  spiritual: ['spirituality', 'culture', 'heritage'],
+  city: ['city', 'food', 'heritage'],
+  island: ['island', 'beach', 'adventure'],
+  desert: ['desert', 'heritage', 'adventure'],
+};
+
+function tagsForType(type) {
+  if (!type) return null;
+  const key = String(type).trim().toLowerCase();
+  if (TYPE_ALIASES[key]) return TYPE_ALIASES[key];
+  return [key]; // fall back to raw tag
 }
 
 router.get('/environment', async (req, res, next) => {
   try {
     const latitude = Number(req.query.latitude || 24.5854), longitude = Number(req.query.longitude || 73.7125);
-    const result = envFallback();
-    if (process.env.OPENWEATHER_API_KEY && !process.env.OPENWEATHER_API_KEY.startsWith('replace-')) {
-      const weatherResponse = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&units=metric&appid=${process.env.OPENWEATHER_API_KEY}`, { signal: AbortSignal.timeout(2500) });
-      if (weatherResponse.ok) {
-        const weather = await weatherResponse.json();
-        result.temperature = Math.round(weather.main?.temp ?? 28);
-        result.weather = weather.weather?.[0]?.description || 'Clear skies';
-        result.source = 'OpenWeather';
-      }
-    }
-    if (process.env.WAQI_API_TOKEN && !process.env.WAQI_API_TOKEN.startsWith('replace-')) {
-      const aqiResponse = await fetch(`https://api.waqi.info/feed/geo:${latitude};${longitude}/?token=${process.env.WAQI_API_TOKEN}`, { signal: AbortSignal.timeout(2500) });
-      if (aqiResponse.ok) {
-        const air = await aqiResponse.json();
-        const value = Number(air.data?.aqi);
-        if (air.status === 'ok' && Number.isFinite(value)) {
-          result.aqi = value;
-          result.aqiLabel = value <= 50 ? 'Good' : value <= 100 ? 'Moderate' : 'Needs care';
-          result.source = result.source === 'demo-fallback' ? 'WAQI' : `${result.source} + WAQI`;
-        }
-      }
-    }
-    res.json(result);
-  } catch (_) { res.json(envFallback()); }
+    res.json(await getEnvironment(latitude, longitude));
+  } catch (_) { res.json(await getEnvironment(24.5854, 73.7125)); }
+});
+
+// List available interest types with live counts for filter chips.
+router.get('/types', async (req, res, next) => {
+  try {
+    const prisma = req.app.get('prisma');
+    const spots = await prisma.touristSpot.findMany({ select: { tags: true } });
+    const counts = {};
+    for (const s of spots) for (const t of (s.tags || [])) counts[String(t).toLowerCase()] = (counts[String(t).toLowerCase()] || 0) + 1;
+    res.json({
+      aliases: Object.keys(TYPE_ALIASES),
+      tags: Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([tag, count]) => ({ tag, count })),
+    });
+  } catch (e) { next(e); }
+});
+
+// Personalised ranking: interests + budget + safety (feature 5).
+router.get('/personalised', async (req, res, next) => {
+  try {
+    const prisma = req.app.get('prisma');
+    const interests = String(req.query.interests || req.query.type || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const budget = Number(req.query.budget || 0);
+    const expand = new Set();
+    for (const i of interests) (tagsForType(i) || [i]).forEach((t) => expand.add(t));
+    const rows = await prisma.touristSpot.findMany({
+      take: 100, orderBy: { name: 'asc' },
+      include: { crowdReports: { orderBy: { recordedAt: 'desc' }, take: 1 } },
+    });
+    const scored = rows.map((s) => {
+      const tags = (s.tags || []).map((t) => String(t).toLowerCase());
+      const hits = [...expand].filter((t) => tags.includes(t)).length;
+      const interestScore = expand.size ? hits / expand.size : 0.3;
+      const safetyScore = (Number(s.safetyScore) || 80) / 100;
+      const budgetScore = budget > 0 ? Math.max(0, 1 - Math.abs(Number(s.averageCost) - budget) / budget) : 0.5;
+      const crowdPenalty = ((s.crowdReports[0]?.level ?? 3) - 1) / 4 * 0.25;
+      const score = Math.round((interestScore * 0.5 + safetyScore * 0.25 + budgetScore * 0.25 - crowdPenalty) * 100);
+      return { ...s, liveCrowd: s.crowdReports[0]?.level ?? null, matchScore: score, matchedTags: tags.filter((t) => expand.has(t)) };
+    });
+    scored.sort((a, b) => b.matchScore - a.matchScore);
+    res.json({ items: scored.slice(0, Number(req.query.limit || 20)), interests: [...expand] });
+  } catch (e) { next(e); }
 });
 
 router.get('/', async (req, res, next) => {
   try {
     const prisma = req.app.get('prisma');
     const page = Math.max(1, Number(req.query.page || 1));
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 24)));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 100)));
     const search = String(req.query.search || '').trim();
-    const where = search ? { OR: [{ name: { contains: search, mode: 'insensitive' } }, { city: { contains: search, mode: 'insensitive' } }, { state: { contains: search, mode: 'insensitive' } }, { tags: { has: search.toLowerCase() } }] } : {};
+    const type = String(req.query.type || req.query.interest || '').trim();
+    const state = String(req.query.state || '').trim();
+    const maxCost = Number(req.query.maxCost || 0);
+    const minSafety = Number(req.query.minSafety || 0);
+    const featuredOnly = String(req.query.featured || '').toLowerCase() === 'true';
+    const and = [];
+    if (featuredOnly) and.push({ isFeatured: true });
+    if (search) and.push({ OR: [{ name: { contains: search, mode: 'insensitive' } }, { city: { contains: search, mode: 'insensitive' } }, { state: { contains: search, mode: 'insensitive' } }, { tags: { has: search.toLowerCase() } }] });
+    if (type) {
+      const tags = tagsForType(type) || [type.toLowerCase()];
+      and.push({ tags: { hasSome: tags } });
+    }
+    if (state) and.push({ state: { equals: state, mode: 'insensitive' } });
+    if (maxCost > 0) and.push({ averageCost: { lte: maxCost } });
+    if (minSafety > 0) and.push({ safetyScore: { gte: minSafety } });
+    const where = and.length ? { AND: and } : {};
     const [spots, total] = await Promise.all([
       prisma.touristSpot.findMany({
         where,
         skip: (page - 1) * limit,
         take: limit,
-        include: { crowdReports: { orderBy: { recordedAt: 'desc' }, take: 1 } },
-        orderBy: { name: 'asc' }
+        include: { crowdReports: { orderBy: { recordedAt: 'desc' }, take: 1 }, hotels: { orderBy: { pricePerNight: 'asc' }, take: 3 } },
+        orderBy: [{ isFeatured: 'desc' }, { popularity: 'desc' }, { name: 'asc' }]
       }),
       prisma.touristSpot.count({ where })
     ]);
-    res.json({ items: spots.map(s => ({ ...s, liveCrowd: s.crowdReports[0]?.level ?? null })), page, limit, total, hasMore: page * limit < total });
+    res.json({ items: spots.map(s => ({ ...s, liveCrowd: s.crowdReports[0]?.level ?? null, cheapestHotel: s.hotels?.[0] || null })), page, limit, total, hasMore: page * limit < total, appliedType: type || null, resolvedTags: type ? tagsForType(type) : null });
+  } catch (e) { next(e); }
+});
+
+// Featured 3 — powers the home screen. One call, no auth needed.
+router.get('/featured/list', async (req, res, next) => {
+  try {
+    const prisma = req.app.get('prisma');
+    const spots = await prisma.touristSpot.findMany({
+      where: { isFeatured: true },
+      orderBy: { popularity: 'desc' },
+      include: {
+        crowdReports: { orderBy: { recordedAt: 'desc' }, take: 1 },
+        hotels: { orderBy: { pricePerNight: 'asc' }, take: 3 },
+      },
+    });
+    res.json({
+      items: spots.map((s) => ({
+        ...s,
+        liveCrowd: s.crowdReports[0]?.level ?? null,
+        cheapestHotel: s.hotels?.[0] || null,
+      })),
+    });
+  } catch (e) { next(e); }
+});
+
+// Minimum-price comparison for a spot (feature 9).
+router.get('/:id/price-compare', async (req, res, next) => {
+  try {
+    const prisma = req.app.get('prisma');
+    const spot = await prisma.touristSpot.findUnique({ where: { id: req.params.id } });
+    if (!spot) return res.status(404).json({ error: 'Spot not found' });
+    const days = Math.max(1, Number(req.query.days || 3));
+    let guide = null;
+    if (req.query.guideId) guide = await prisma.guideProfile.findUnique({ where: { id: String(req.query.guideId) } });
+    const quote = computeTripTotal({ spot, guide, cab: null, cabKm: 0, days });
+    res.json({ spot: { id: spot.id, name: spot.name, averageCost: spot.averageCost }, ...quote });
   } catch (e) { next(e); }
 });
 
 router.get('/:id', async (req, res, next) => {
   try {
-    const spot = await req.app.get('prisma').touristSpot.findUnique({ where: { id: req.params.id }, include: { crowdReports: { orderBy: { recordedAt: 'desc' }, take: 20 } } });
+    const spot = await req.app.get('prisma').touristSpot.findUnique({ where: { id: req.params.id }, include: { crowdReports: { orderBy: { recordedAt: 'desc' }, take: 20 }, hotels: { orderBy: { pricePerNight: 'asc' } } } });
     if (!spot) return res.status(404).json({ error: 'Spot not found' });
     res.json(spot);
   } catch (e) { next(e); }

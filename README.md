@@ -1,62 +1,54 @@
-# YātraSetu backend
+# Panthan — API + Expo React Native app
 
-Node.js + Express REST API, PostgreSQL + Prisma ORM, and an optional Python FastAPI crowd-prediction service. It implements the architecture supplied: tourist discovery, budget planning, verified guide QR checks, user feedback/crowd reports, and safety/SOS alerts.
+_(formerly YatraSetu)_
 
-## Run locally
+Node.js + Express REST API, PostgreSQL + Prisma, Python crowd service (Starlette + msgspec + scikit-learn), and an **Expo React Native frontend in `./mobile`** (the old HTML dashboard is removed; the API is now API-only).
 
-1. Install **Node.js 20+**, **PostgreSQL 15+**, and optionally **Python 3.11+** for the prediction service.
-2. Create a database called `yatrasetu` in PostgreSQL.
-3. Copy `.env.example` to `.env`, then set `DATABASE_URL` and `FIREBASE_SERVICE_ACCOUNT_JSON` (see **Firebase Authentication setup** below).
-4. In PowerShell run `npm.cmd install`, `npm.cmd run prisma:generate`, `npm.cmd run prisma:migrate`, then `npm.cmd run prisma:seed`.
-5. Start the API with `npm.cmd run dev`. Health check: `http://localhost:4000/health`.
-6. Optional prediction service: `cd prediction-service`, `py -m pip install -r requirements.txt`, then `uvicorn main:app --port 8001`.
+## Run on any system
 
-The browser dashboard is served at `http://localhost:4000/`. Sign in / create an account from the ♧ button (top right) — credentials are handled entirely by **Firebase Authentication**. For the seeded `admin@yatrasetu.in` account, create a Firebase user with that same email (see below) and it will automatically link to the seeded admin profile on first sign-in.
+1. Install **Node.js 22** (see `.nvmrc`; Node 20.19+ works, 24 not recommended for Expo 57), **PostgreSQL 15+** (or a Neon URL), and optionally **Python 3.10+**.
+2. Copy `.env.example` to `.env`; set `DATABASE_URL`, `JWT_SECRET`, `QR_SECRET`. Add `GEMINI_API_KEY`, `OPENWEATHER_API_KEY`, `WAQI_API_TOKEN` to go live (all optional — graceful fallbacks included). Leave `RAZORPAY_*` empty for mock checkout.
+3. One-command setup: `npm run setup` (backend install + DB push + seed deps + mobile install + `expo install --fix`). Or step by step:
+   Backend: `npm install`, `npx prisma generate`, `npx prisma db push`, `npm run prisma:seed`, `npm run dev` → `http://localhost:4000/health`.
+4. Crowd model: `cd prediction-service`, `pip install -r requirements.txt`, `python train.py`, `uvicorn main:app --port 8001`.
+5. Mobile: `cd mobile`, `npm install`, `npx expo start --lan`, scan with Expo Go (see `mobile/README.md` for LAN-IP setup). Check health with `npx expo-doctor` (21/21 expected).
 
-## Firebase Authentication setup
+Catalogue: **3 featured places** — Jaipur (Historical), Goa (Beach), Manali (Hill Station) — each with **popular hotels, best prices, Book now + Pay** (`/api/hotels/*` → `/api/payments/*`).
 
-This app uses the **Firebase JS SDK** in the browser (`index.html`) for sign-up/sign-in/sign-out, and the **Firebase Admin SDK** on the server (`src/firebase/admin.js`) to verify the ID token on every authenticated API request. The backend never sees or stores a password.
+Demo logins: `admin@yatrasetu.in` / `DemoPass123!`, `traveller@example.com` / `DemoPass123!`.
 
-1. **Create a Firebase project** — [console.firebase.google.com](https://console.firebase.google.com) → *Add project*.
-2. **Register a Web app** — Project settings (gear icon) → *Your apps* → *Add app* → Web (`</>`). No app nickname requirements matter here since this is a plain web app, not iOS/Android.
-3. **Copy the client config** into `index.html`'s `firebaseConfig` object (search for `PASTE_API_KEY_HERE`): `apiKey`, `authDomain`, `projectId`, `storageBucket`, `messagingSenderId`, `appId`. These are public client identifiers, not secrets — safe to ship in the browser.
-4. **Enable Email/Password sign-in** — Build → Authentication → *Get started* → Sign-in method tab → enable **Email/Password**.
-5. **Generate a service account key** (server-side, keep this secret) — Project settings → *Service accounts* → *Generate new private key*. Paste the entire downloaded JSON as a single-line string into `FIREBASE_SERVICE_ACCOUNT_JSON` in your `.env`. Never commit this file or expose it to the browser.
+## API flow (all 10 requested features)
 
-## API flow
+| # | Feature | Endpoint |
+| --- | --- | --- |
+| — | Register / login / Firebase bridge | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/firebase { idToken }` |
+| 5 | Discover + personalised by type | `GET /api/spots?type=beach\|hill station&maxCost=&minSafety=`, `GET /api/spots/types`, `GET /api/spots/personalised?interests=beach,heritage&budget=`, `GET /api/spots/featured/list` (top 3) |
+| — | Hotels: popular stays + best prices + Book Now | `GET /api/hotels?spotId=`, `GET /api/hotels/featured`, `GET /api/hotels/:id/price-compare?nights=2`, `POST /api/hotels/book` → standard `/api/payments/*` checkout |
+| 2 | Smart day-wise plan (crowd/AQI/weather/safety) | `POST /api/trips/plan` → `roadmap[]` with per-day signals + reasons |
+| 1 | Book Now + payments (mock → Razorpay-ready) | `POST /api/payments/create { bookingId }`, `POST /api/payments/confirm { paymentId }` |
+| 9 | Minimum-price proof | `quote` inside plan + `GET /api/spots/:id/price-compare?days=3` |
+| 4 | Signed QR (print + camera scan) | `GET /api/verify/guide/:id/qr`, `POST /api/verify/scan-payload { qrText, bookingId?, chargedAmount? }` |
+| 3 | Overcharge / scam alerts | `scam` object in every scan (+ `GET /api/verify/history/mine`) |
+| 6 | Feedback wall | `POST /api/feedback`, `GET /api/feedback?spotId=`, `GET /api/feedback/summary?spotId=`, `GET /api/feedback/mine`, `PUT/DELETE /api/feedback/:id` |
+| 7 | Firebase auth (hardened) | JWT + Firebase ID-token accepted everywhere; throttled login; FCM token stored |
+| 8 | Crowd prediction (sklearn) | `GET /api/spots/:id/crowd-prediction?date=` → Python RF model (history, weekend, holiday/festival, weather, temp, AQI, dow, month) |
+| 10 | Optimised validation | Prediction service uses Starlette + msgspec (no pydantic) |
+| — | SOS / safety | `POST /api/safety/alerts`, `GET /api/safety/alerts/mine`, `GET /api/safety/helplines` |
 
-| Feature | Endpoint |
-| --- | --- |
-| Sync app profile after Firebase sign-up | `POST /api/auth/sync` (Bearer Firebase ID token, body `{ "name": "..." }`) |
-| Current user profile | `GET /api/auth/me` |
-| Discover destinations | `GET /api/spots` |
-| Budget itinerary | `POST /api/trips/plan` |
-| My trips | `GET /api/trips/mine` |
-| Generate guide QR | `GET /api/verify/guide/:guideId/qr` |
-| Verify on the spot | `POST /api/verify/scan` |
-| SOS / safety alert | `POST /api/safety/alerts` |
-| Ratings & crowd confirmation | `POST /api/feedback` |
-| Explainable crowd forecast | `GET /api/spots/:id/crowd-prediction?date=2026-10-12&weatherRisk=.2` |
-| Service QR code | `GET /api/verify/guide/:id/qr` or `GET /api/verify/cab/:id/qr` |
-| Scan guide or cab | `POST /api/verify/scan` with `{ "service":"GUIDE"|"CAB", "id":"...", "bookingId":"..." }` |
-| Admin dashboard data | Admin-only `GET /api/admin/overview` |
-| Review registry records | Admin-only `PUT /api/admin/guides/:id/review`, `PUT /api/admin/cabs/:id/review` |
-| Configure official prices | Admin-only `PUT /api/admin/guides/:id/pricing`, `PUT /api/admin/cabs/:id/pricing` |
-| Resolve alerts and inspect live location | Admin-only `PUT /api/admin/alerts/:id/resolve`, plus `GET /api/location/guide/:guideId` |
+Authenticated endpoints: `Authorization: Bearer <token>` (Panthan JWT **or** Firebase ID token).
 
-Authenticated endpoints require `Authorization: Bearer <Firebase ID token>` (obtained client-side via `firebase.auth().currentUser.getIdToken()`).
+## Firebase Google Sign-In setup
 
-## Remaining integrations for a production demo
+The mobile app supports "Continue with Google" via the Firebase client SDK. To enable it:
 
-- **Firebase Cloud Messaging**: send the SOS, AQI, weather, and crowd alerts to travellers/admins.
-- **AQI and weather provider**: add server-side API keys (for example OpenWeather + WAQI), cache readings, and never expose keys to the frontend.
-- **Maps**: use MapLibre with OpenStreetMap tiles; add a routing provider for live guide routes.
-- **Verified guide registry**: this SIH demo uses an admin-approved YatraSetu registry. It must not be presented as government verification without formal registry access or an MoU/data-sharing agreement.
-- **Admin dashboard**: the static dashboard is served at `/`, stores only recent guide coordinates in `LiveLocation`, polls them every 30 seconds, and exposes review, pricing, QR history, SOS, and crowd-report moderation.
-- **Security/deployment**: use HTTPS, production CORS allow-list, rate limits, audit logs, encrypted secrets, database backups, consent and retention policies for live location data.
+1. **Firebase Console** → your project → **Authentication → Sign-in method** → enable **Google**.
+2. **Firebase Console** → **Project settings → Your apps → Web app** → copy the config object → set it as `FIREBASE_WEB_CONFIG_JSON` in the backend `.env` (one line, e.g. `{"apiKey":"...","authDomain":"...","projectId":"...","appId":"..."}`).
+3. **Firebase Console** → **Project settings → Service accounts → Generate new private key** → set the downloaded JSON as `FIREBASE_SERVICE_ACCOUNT_JSON` in the backend `.env`.
+4. **Google Cloud Console** (same project) → **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**. Add authorized redirect URI: `https://auth.expo.io/@<your-expo-username>/panthan`. Copy the client ID into `mobile/.env` as `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`.
+5. Restart the backend and `npx expo start --lan` in `mobile/`.
 
-The included prediction endpoint is explainable by design: each result returns the numerical estimate and the factors that changed it. It aggregates recent traveller confirmations, day type, holiday/festival input, and weather risk. Replace its heuristic with a trained scikit-learn model after collecting validated crowd reports.
+The backend's existing `/api/auth/firebase` bridge (unchanged) turns any valid Firebase ID token into a standard Panthan JWT, so no backend auth logic changes were needed — only the mobile client now performs a real Google sign-in instead of requiring a manually pasted token.
 
-## New migration after verification/map additions
+## After pulling
 
-After pulling these changes, run `npm.cmd run prisma:migrate` and then `npm.cmd run prisma:seed`. This creates the cab registry, QR scan audit logs, and live-guide-location tables. The frontend uses MapLibre's demo style for a presentation-ready live-route map; replace that style URL with a MapTiler or self-hosted style before production.
+Run `npm run prisma:migrate` then `npm run prisma:seed` (adds `Payment`, scam columns, `Feedback.spotId`). Prediction service: `pip install -r requirements.txt && python train.py`.

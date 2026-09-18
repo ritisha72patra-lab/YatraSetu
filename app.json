@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "95756673-4767-48d6-bfad-fb3203ae54ca"
+      }
+    },
+    "android": {
+      "package": "com.kjcodingstuffsteam.panthanapi"
+    },
+    "ios": {
+      "bundleIdentifier": "com.kjcodingstuffsteam.panthanapi",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}

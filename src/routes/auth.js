@@ -1,24 +1,162 @@
 const router = require('express').Router();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const auth = require('../middleware/auth');
 
-// Credentials (email/password) are owned entirely by Firebase Authentication now —
-// this backend never sees or stores a password. The `auth` middleware verifies the
-// Firebase ID token and auto-creates/links the matching Prisma User row.
+// Tiny in-memory login throttle (per IP+email, 10 tries/min) — no Redis needed,
+// works on any system and resets on restart. Production: move to Redis.
+const _attempts = new Map();
+function throttle(key, limit = 10, windowMs = 60000) {
+  const now = Date.now();
+  const arr = (_attempts.get(key) || []).filter((t) => now - t < windowMs);
+  arr.push(now);
+  _attempts.set(key, arr);
+  return arr.length > limit;
+}
+
+const credentials = z.object({ name: z.string().min(2).optional(), email: z.string().email(), password: z.string().min(8) });
+const tokenFor = user => jwt.sign({ sub: user.id, role: user.role, name: user.name }, process.env.JWT_SECRET, { expiresIn: '7d' });
 const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, preferences: user.preferences || null });
 
-// Called once by the client right after Firebase createUserWithEmailAndPassword
-// succeeds, to record the display name the traveller entered at signup.
-const syncSchema = z.object({ name: z.string().min(2).optional() });
+function friendlyRegisterError(e, email) {
+  // Prisma unique violation -> email already taken
+  if (e?.code === 'P2002') {
+    const err = new Error(`This email (${email}) is already registered. Please Sign in instead. If you registered with Firebase/Google using the same email, just Sign in — your accounts share the same email.`);
+    err.status = 409; err.code = 'EMAIL_TAKEN'; throw err;
+  }
+  throw e;
+}
 
-router.post('/sync', auth, async (req, res, next) => {
+router.post('/register', async (req, res, next) => {
   try {
-    const data = syncSchema.parse(req.body);
-    const user = await req.app.get('prisma').user.update({
-      where: { id: req.user.sub },
-      data: data.name ? { name: data.name } : {},
-    });
-    res.json(publicUser(user));
+    const data = credentials.extend({ name: z.string().min(2) }).parse(req.body);
+    const existing = await req.app.get('prisma').user.findUnique({ where: { email: data.email } }).catch(() => null);
+    if (existing) {
+      // Firebase-linked placeholder accounts can be "claimed" by setting a password
+      if (String(existing.passwordHash || '').startsWith('firebase:')) {
+        const user = await req.app.get('prisma').user.update({
+          where: { id: existing.id },
+          data: { name: data.name, passwordHash: await bcrypt.hash(data.password, 12) },
+        });
+        return res.status(200).json({ token: tokenFor(user), user: publicUser(user), notice: 'Your Firebase/Google email was already on file — a password has now been set so email+password sign-in works too.' });
+      }
+      const err = new Error(`This email (${data.email}) is already registered. Please Sign in instead.`);
+      err.status = 409; err.code = 'EMAIL_TAKEN'; throw err;
+    }
+    const user = await req.app.get('prisma').user.create({ data: { name: data.name, email: data.email, passwordHash: await bcrypt.hash(data.password, 12) } });
+    res.status(201).json({ token: tokenFor(user), user: publicUser(user) });
+  } catch (e) {
+    if (e?.code === 'P2002') return next(friendlyRegisterError(e, req.body?.email));
+    next(e);
+  }
+});
+
+router.post('/login', async (req, res, next) => {
+  try {
+    if (throttle('login:' + (req.ip || '') + ':' + String(req.body?.email || '').toLowerCase())) {
+      return res.status(429).json({ error: 'Too many sign-in attempts. Wait a minute and retry.', code: 'RATE_LIMITED' });
+    }
+    const data = credentials.pick({ email: true, password: true }).parse(req.body);
+    const user = await req.app.get('prisma').user.findUnique({ where: { email: data.email } });
+    if (!user) return res.status(401).json({ error: 'Incorrect email or password. If you registered with Firebase/Google, use “Continue with Firebase” with the same email, or Register first.', code: 'INVALID_CREDENTIALS' });
+    const ok = await bcrypt.compare(data.password, user.passwordHash).catch(() => false);
+    if (!ok) {
+      if (String(user.passwordHash || '').startsWith('firebase:')) {
+        return res.status(401).json({ error: 'This email was registered via Firebase/Google (no password set). Use “Continue with Firebase” with the same email, or Register again with a password to link it.', code: 'FIREBASE_PASSWORD_MISSING' });
+      }
+      return res.status(401).json({ error: 'Incorrect email or password', code: 'INVALID_CREDENTIALS' });
+    }
+    res.json({ token: tokenFor(user), user: publicUser(user) });
+  } catch (e) { next(e); }
+});
+
+/**
+ * DEMO-ONLY bypass: logs straight into a seeded demo account with NO
+ * password check at all. Guarded by ENABLE_DEMO_LOGIN so this can never
+ * run by accident anywhere real users could reach this API — set
+ * ENABLE_DEMO_LOGIN=false (or delete the line) in .env before deploying
+ * anywhere beyond your own machine.
+ * Body: { role?: 'traveller' | 'admin' } — defaults to 'traveller'.
+ */
+router.post('/demo-login', async (req, res, next) => {
+  try {
+    if (process.env.ENABLE_DEMO_LOGIN !== 'true') {
+      const err = new Error('Demo login is disabled on this server. Set ENABLE_DEMO_LOGIN=true in .env for local development only, then restart the API.');
+      err.status = 403; err.code = 'DEMO_LOGIN_DISABLED'; throw err;
+    }
+    const role = req.body?.role === 'admin' ? 'admin' : 'traveller';
+    const email = role === 'admin' ? 'admin@yatrasetu.in' : 'traveller@example.com';
+    const user = await req.app.get('prisma').user.findUnique({ where: { email } });
+    if (!user) {
+      const err = new Error(`Demo account (${email}) not found. Run "npm run prisma:seed" first.`);
+      err.status = 404; err.code = 'DEMO_USER_MISSING'; throw err;
+    }
+    res.json({ token: tokenFor(user), user: publicUser(user) });
+  } catch (e) { next(e); }
+});
+
+/**
+ * Public Firebase web config for the browser SDK + admin status.
+ * The web apiKey is public by design; the Admin SDK secret never leaves the server.
+ */
+router.get('/firebase-config', async (req, res) => {
+  const { getFirebaseAuth, getFirebaseProjectId, getFirebaseWebConfig } = require('../services/firebase');
+  const web = getFirebaseWebConfig();
+  res.json({
+    adminConfigured: Boolean(getFirebaseAuth()),
+    webConfigured: Boolean(web),
+    projectId: web?.projectId || getFirebaseProjectId() || null,
+    authDomain: web?.authDomain || null,
+    // Returned so the browser can firebase.initializeApp(config) directly.
+    // Safe to expose: Firebase web keys are public identifiers, not secrets.
+    config: web || null,
+  });
+});
+
+/**
+ * Firebase bridge: frontend sends a Firebase ID token (Google popup or phone
+ * OTP via the Firebase client SDK). Backend verifies it, finds-or-creates the
+ * Panthan user (by email, or synthetic phone email), and returns the
+ * standard Panthan JWT so /api/trips, /api/safety, etc. keep working
+ * unchanged. Same email/phone always maps to one Panthan account.
+ * Body: { idToken: string, name?: string }
+ */
+router.post('/firebase', async (req, res, next) => {
+  try {
+    const { idToken, name, fcmToken } = z.object({ idToken: z.string().min(10), name: z.string().min(1).max(80).optional(), fcmToken: z.string().max(255).optional() }).parse(req.body);
+    const { getFirebaseAuth, resolveFirebaseIdentity } = require('../services/firebase');
+    const firebaseAuth = getFirebaseAuth();
+    if (!firebaseAuth) {
+      const err = new Error('Firebase is not configured on the server. Set FIREBASE_SERVICE_ACCOUNT_JSON in .env, then restart the API.');
+      err.status = 503; err.code = 'FIREBASE_NOT_CONFIGURED'; throw err;
+    }
+    const decoded = await firebaseAuth.verifyIdToken(idToken);
+    const identity = resolveFirebaseIdentity(decoded, name);
+    if (!identity.email) {
+      const err = new Error('This Firebase account has neither an email nor a phone number, so it cannot be linked. Sign in with Google or phone OTP and retry.');
+      err.status = 400; err.code = 'FIREBASE_NO_EMAIL'; throw err;
+    }
+    const prisma = req.app.get('prisma');
+    let user = await prisma.user.findUnique({ where: { email: identity.email } });
+    const prefsFor = (base) => ({ ...(base || {}), ...(identity.phone ? { phone: identity.phone } : {}), firebaseUid: decoded.uid, ...(fcmToken ? { fcmToken } : {}) });
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          name: identity.displayName,
+          email: identity.email,
+          // Placeholder — real auth is the Firebase ID token. Prefix lets /login explain this.
+          passwordHash: 'firebase:' + decoded.uid,
+          preferences: prefsFor(null),
+        },
+      });
+    } else {
+      // Backfill phone / fcmToken / uid on every Firebase sign-in (Expo + web).
+      try {
+        await prisma.user.update({ where: { id: user.id }, data: { preferences: prefsFor(user.preferences) } });
+      } catch {}
+    }
+    res.json({ token: tokenFor(user), user: publicUser(user), firebaseUid: decoded.uid });
   } catch (e) { next(e); }
 });
 

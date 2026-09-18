@@ -1,0 +1,15 @@
+{
+  "mae": 4.48,
+  "r2": 0.96,
+  "rows": 4000,
+  "feature_importance": {
+    "historical_average": 0.831,
+    "weekend": 0.0686,
+    "holiday": 0.0612,
+    "weather_risk": 0.0207,
+    "temperature_c": 0.0033,
+    "aqi": 0.0042,
+    "day_of_week": 0.0016,
+    "month": 0.0095
+  }
+}

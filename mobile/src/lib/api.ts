@@ -9,7 +9,6 @@ const TOKEN_KEY = 'ys-token';
 // Priority: EXPO_PUBLIC_API_URL env > app.json extra.apiUrl > platform default.
 // For a physical phone on the same Wi-Fi, start with:
 //   EXPO_PUBLIC_API_URL=http://<your-PC-LAN-IP>:4000 npx expo start --lan
-// (This PC's Wi-Fi IP is currently 172.29.163.91, already set in app.json.)
 function defaultBase(): string {
   const extra = (Constants.expoConfig?.extra ?? (Constants as any).manifest2?.extra ?? {}) as any;
   if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
@@ -18,6 +17,10 @@ function defaultBase(): string {
 }
 
 export const API_BASE: string = defaultBase();
+if (__DEV__) {
+  // eslint-disable-next-line no-console
+  console.log(`[api] Using API_BASE = ${API_BASE}`);
+}
 
 let memToken: string | null = null;
 export async function getToken(): Promise<string | null> {

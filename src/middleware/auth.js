@@ -18,7 +18,7 @@ module.exports = async (req, res, next) => {
       return res.status(401).json({
         error: 'Session expired or invalid. Please sign in again with email + password.',
         code: 'TOKEN_INVALID',
-        hint: 'Server Firebase bridge is off (FIREBASE_SERVICE_ACCOUNT_JSON missing) so only YatraSetu JWTs are accepted.',
+        hint: 'Server Firebase bridge is off (FIREBASE_SERVICE_ACCOUNT_JSON missing) so only Panthan JWTs are accepted.',
       });
     }
     let decoded;
@@ -38,7 +38,7 @@ module.exports = async (req, res, next) => {
     } catch (dbError) {
       return res.status(503).json({ error: 'Account database is unavailable. Connect the database and run `npx prisma migrate deploy` + seed, then retry.', code: 'DB_UNAVAILABLE' });
     }
-    // Auto-provision: a Firebase Google/phone identity gets a YatraSetu row on
+    // Auto-provision: a Firebase Google/phone identity gets a Panthan row on
     // first authenticated call, so SOS/trips work without a separate register.
     if (!user) {
       try {
@@ -52,7 +52,7 @@ module.exports = async (req, res, next) => {
           },
         });
       } catch {
-        return res.status(401).json({ error: `Firebase sign-in OK (${lookupEmail}) but no YatraSetu profile exists yet. Register once with the same email to link it.`, code: 'FIREBASE_NOT_REGISTERED', email: lookupEmail });
+        return res.status(401).json({ error: `Firebase sign-in OK (${lookupEmail}) but no Panthan profile exists yet. Register once with the same email to link it.`, code: 'FIREBASE_NOT_REGISTERED', email: lookupEmail });
       }
     }
     req.user = { sub: user.id, role: user.role, name: user.name, firebaseUid: decoded.uid };

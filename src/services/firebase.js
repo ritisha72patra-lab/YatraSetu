@@ -66,6 +66,12 @@ function getFirebaseWebConfig() {
  * existing User(email unique) model keeps working with zero migration:
  *   phone_+919876543210@phone.yatrasetu.local
  * Real phone is also returned so callers can store it in preferences.
+ *
+ * NOTE (post-rebrand YatraSetu -> Panthan): the "phone.yatrasetu.local"
+ * domain below is an internal synthetic-email identifier, not user-facing
+ * branding. It is intentionally left unchanged so existing phone-auth
+ * users' email lookups keep resolving to the same account after the
+ * rename. Do not change this string without a data migration.
  */
 function resolveFirebaseIdentity(decoded, nameOverride) {
   const phone = decoded.phone_number || null;

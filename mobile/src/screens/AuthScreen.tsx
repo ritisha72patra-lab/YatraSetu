@@ -1,17 +1,53 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, Alert, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TextInput, Pressable, StyleSheet, ScrollView } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { useAuth } from '../lib/auth';
+import { getFirebaseAuthClient } from '../lib/firebase';
+import { notify } from '../lib/notify';
 import { Screen } from '../lib/Screen';
 import { theme } from '../theme';
 
+WebBrowser.maybeCompleteAuthSession();
+
 export default function AuthScreen() {
-  const { signIn, register, signInWithFirebaseToken } = useAuth();
+  const { signIn, register, signInWithFirebaseToken, demoLogin } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('traveller@example.com');
   const [password, setPassword] = useState('');
-  const [idToken, setIdToken] = useState('');
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [demoBusy, setDemoBusy] = useState<'traveller' | 'admin' | null>(null);
+
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  });
+
+  useEffect(() => {
+    if (response?.type === 'success' && response.params?.id_token) {
+      handleGoogleIdToken(response.params.id_token);
+    } else if (response?.type === 'error') {
+      notify('Google sign-in failed', response.error?.message || 'Please try again.');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [response]);
+
+  const handleGoogleIdToken = async (googleIdToken: string) => {
+    try {
+      setGoogleBusy(true);
+      const authClient = await getFirebaseAuthClient();
+      const credential = GoogleAuthProvider.credential(googleIdToken);
+      const result = await signInWithCredential(authClient, credential);
+      const firebaseIdToken = await result.user.getIdToken();
+      await signInWithFirebaseToken(firebaseIdToken);
+    } catch (e: any) {
+      notify('Google sign-in failed', e.message || 'Please try again.');
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
 
   const submit = async () => {
     try {
@@ -19,31 +55,38 @@ export default function AuthScreen() {
       if (mode === 'login') await signIn(email.trim(), password);
       else await register(name.trim(), email.trim(), password);
     } catch (e: any) {
-      Alert.alert('Sign-in failed', e.message);
+      notify('Sign-in failed', e.message);
     } finally {
       setBusy(false);
     }
   };
 
-  const firebaseGo = async () => {
+  const handleDemo = async (role: 'traveller' | 'admin') => {
     try {
-      setBusy(true);
-      if (!idToken.trim()) throw new Error('Paste a Firebase ID token (Google sign-in via web, then user.getIdToken()).');
-      await signInWithFirebaseToken(idToken.trim());
+      setDemoBusy(role);
+      await demoLogin(role);
     } catch (e: any) {
-      Alert.alert('Firebase failed', e.message);
+      notify('Demo login failed', e.message);
     } finally {
-      setBusy(false);
+      setDemoBusy(null);
     }
   };
 
   return (
     <Screen padded={false}>
     <ScrollView contentContainerStyle={s.wrap}>
-      <Image source={require('../../assets/panthan-logo.jpeg')} style={s.logo} resizeMode="contain" />
       <Text style={s.brand}>Panthan</Text>
-      <Text style={s.sub}>Your path to a safer journey.</Text>
+      <Text style={s.sub}>Your bridge to a safer journey.</Text>
       <View style={s.card}>
+        <View style={s.demoRow}>
+          <Pressable style={s.demoBtn} onPress={() => handleDemo('traveller')} disabled={demoBusy !== null}>
+            <Text style={s.demoBtnT}>{demoBusy === 'traveller' ? 'Entering…' : '🧳 Demo Traveller'}</Text>
+          </Pressable>
+          <Pressable style={s.demoBtn} onPress={() => handleDemo('admin')} disabled={demoBusy !== null}>
+            <Text style={s.demoBtnT}>{demoBusy === 'admin' ? 'Entering…' : '🛠️ Demo Admin'}</Text>
+          </Pressable>
+        </View>
+        <Text style={s.div}>— or sign in normally —</Text>
         <View style={s.tabs}>
           {(['login', 'register'] as const).map((m) => (
             <Pressable key={m} onPress={() => setMode(m)} style={[s.tab, mode === m && s.tabOn]}>
@@ -59,12 +102,15 @@ export default function AuthScreen() {
         <Pressable style={s.primary} onPress={submit} disabled={busy}>
           <Text style={s.primaryT}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}</Text>
         </Pressable>
-        <Text style={s.div}>— or continue with Firebase —</Text>
-        <TextInput style={s.input} placeholder="Firebase ID token (Google / phone)" value={idToken} onChangeText={setIdToken} multiline />
-        <Pressable style={s.ghost} onPress={firebaseGo} disabled={busy}>
-          <Text style={s.ghostT}>Link Firebase token</Text>
+        <Text style={s.div}>— or —</Text>
+        <Pressable
+          style={s.ghost}
+          onPress={() => promptAsync()}
+          disabled={!request || googleBusy}
+        >
+          <Text style={s.ghostT}>{googleBusy ? 'Signing in…' : 'Continue with Google'}</Text>
         </Pressable>
-        <Text style={s.hint}>Same email = same account across password + Firebase. Demo: traveller@example.com / DemoPass123!</Text>
+        <Text style={s.hint}>Same email = same account across password + Google sign-in. Demo: traveller@example.com / DemoPass123!</Text>
       </View>
     </ScrollView>
     </Screen>
@@ -73,10 +119,12 @@ export default function AuthScreen() {
 
 const s = StyleSheet.create({
   wrap: { padding: 20, backgroundColor: theme.paper, flexGrow: 1, justifyContent: 'center' },
-  logo: { width: 180, height: 116, alignSelf: 'center', marginBottom: 8 },
   brand: { fontSize: 32, fontWeight: '800', color: theme.tealDark, textAlign: 'center' },
   sub: { textAlign: 'center', color: theme.muted, marginBottom: 16 },
   card: { backgroundColor: theme.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: theme.line },
+  demoRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  demoBtn: { flex: 1, backgroundColor: theme.tealDark, borderRadius: 10, padding: 12, alignItems: 'center' },
+  demoBtnT: { color: '#fff', fontWeight: '800', fontSize: 13 },
   tabs: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   tab: { flex: 1, padding: 10, borderRadius: 10, backgroundColor: theme.paper, alignItems: 'center' },
   tabOn: { backgroundColor: theme.teal },

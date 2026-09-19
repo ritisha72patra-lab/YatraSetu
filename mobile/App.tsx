@@ -16,7 +16,6 @@ import ScanScreen from './src/screens/ScanScreen';
 import FeedbackScreen from './src/screens/FeedbackScreen';
 import SafetyScreen from './src/screens/SafetyScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-import AdminScreen from './src/screens/AdminScreen';
 
 const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
@@ -52,12 +51,6 @@ function MainTabs() {
   );
 }
 
-function AdminTabs() {
-  return <Tabs.Navigator screenOptions={{ headerShown: false, tabBarActiveTintColor: theme.teal, tabBarInactiveTintColor: theme.muted }}>
-    <Tabs.Screen name="ControlRoom" component={AdminScreen} options={{ tabBarLabel: 'Control room', tabBarIcon: ({ color, size }) => <Ionicons name="shield-checkmark" size={size} color={color} /> }} />
-  </Tabs.Navigator>;
-}
-
 function Root() {
   const { user, loading } = useAuth();
   if (loading) return <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>;
@@ -65,12 +58,10 @@ function Root() {
   return (
     <NavigationContainer>
       <Stack.Navigator>
-        {user.role === 'ADMIN' ? <Stack.Screen name="Home" component={AdminTabs} options={{ headerShown: false }} /> : <>
-          <Stack.Screen name="Home" component={MainTabs} options={{ headerShown: false }} />
-          <Stack.Screen name="SpotDetail" component={SpotDetailScreen} options={({ route }: any) => ({ title: route.params?.name || 'Place' })} />
-          <Stack.Screen name="Planner" component={PlannerScreen} options={{ title: 'Trip planner' }} />
-          <Stack.Screen name="Feedback" component={FeedbackScreen} options={{ title: 'Feedback' }} />
-        </>}
+        <Stack.Screen name="Home" component={MainTabs} options={{ headerShown: false }} />
+        <Stack.Screen name="SpotDetail" component={SpotDetailScreen} options={({ route }: any) => ({ title: route.params?.name || 'Place' })} />
+        <Stack.Screen name="Planner" component={PlannerScreen} options={{ title: 'Trip planner' }} />
+        <Stack.Screen name="Feedback" component={FeedbackScreen} options={{ title: 'Feedback' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -84,4 +75,10 @@ export default function App() {
       </AuthProvider>
     </SafeAreaProvider>
   );
+}
+
+function AdminTabs() {
+  return <Tabs.Navigator screenOptions={{ headerShown: false, tabBarActiveTintColor: theme.teal, tabBarInactiveTintColor: theme.muted }}>
+    <Tabs.Screen name="ControlRoom" component={AdminScreen} options={{ tabBarLabel: 'Control room', tabBarIcon: ({ color, size }) => <Ionicons name="shield-checkmark" size={size} color={color} /> }} />
+  </Tabs.Navigator>;
 }

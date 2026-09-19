@@ -15,9 +15,29 @@ function throttle(key, limit = 10, windowMs = 60000) {
   return arr.length > limit;
 }
 
+// Tiny in-memory login throttle (per IP+email, 10 tries/min) — no Redis needed,
+// works on any system and resets on restart. Production: move to Redis.
+const _attempts = new Map();
+function throttle(key, limit = 10, windowMs = 60000) {
+  const now = Date.now();
+  const arr = (_attempts.get(key) || []).filter((t) => now - t < windowMs);
+  arr.push(now);
+  _attempts.set(key, arr);
+  return arr.length > limit;
+}
+
 const credentials = z.object({ name: z.string().min(2).optional(), email: z.string().email(), password: z.string().min(8) });
 const tokenFor = user => jwt.sign({ sub: user.id, role: user.role, name: user.name }, process.env.JWT_SECRET, { expiresIn: '7d' });
 const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, preferences: user.preferences || null });
+
+function friendlyRegisterError(e, email) {
+  // Prisma unique violation -> email already taken
+  if (e?.code === 'P2002') {
+    const err = new Error(`This email (${email}) is already registered. Please Sign in instead. If you registered with Firebase/Google using the same email, just Sign in — your accounts share the same email.`);
+    err.status = 409; err.code = 'EMAIL_TAKEN'; throw err;
+  }
+  throw e;
+}
 
 function friendlyRegisterError(e, email) {
   // Prisma unique violation -> email already taken
@@ -44,8 +64,25 @@ router.post('/register', async (req, res, next) => {
       const err = new Error(`This email (${data.email}) is already registered. Please Sign in instead.`);
       err.status = 409; err.code = 'EMAIL_TAKEN'; throw err;
     }
+    const existing = await req.app.get('prisma').user.findUnique({ where: { email: data.email } }).catch(() => null);
+    if (existing) {
+      // Firebase-linked placeholder accounts can be "claimed" by setting a password
+      if (String(existing.passwordHash || '').startsWith('firebase:')) {
+        const user = await req.app.get('prisma').user.update({
+          where: { id: existing.id },
+          data: { name: data.name, passwordHash: await bcrypt.hash(data.password, 12) },
+        });
+        return res.status(200).json({ token: tokenFor(user), user: publicUser(user), notice: 'Your Firebase/Google email was already on file — a password has now been set so email+password sign-in works too.' });
+      }
+      const err = new Error(`This email (${data.email}) is already registered. Please Sign in instead.`);
+      err.status = 409; err.code = 'EMAIL_TAKEN'; throw err;
+    }
     const user = await req.app.get('prisma').user.create({ data: { name: data.name, email: data.email, passwordHash: await bcrypt.hash(data.password, 12) } });
     res.status(201).json({ token: tokenFor(user), user: publicUser(user) });
+  } catch (e) {
+    if (e?.code === 'P2002') return next(friendlyRegisterError(e, req.body?.email));
+    next(e);
+  }
   } catch (e) {
     if (e?.code === 'P2002') return next(friendlyRegisterError(e, req.body?.email));
     next(e);
@@ -54,6 +91,9 @@ router.post('/register', async (req, res, next) => {
 
 router.post('/login', async (req, res, next) => {
   try {
+    if (throttle('login:' + (req.ip || '') + ':' + String(req.body?.email || '').toLowerCase())) {
+      return res.status(429).json({ error: 'Too many sign-in attempts. Wait a minute and retry.', code: 'RATE_LIMITED' });
+    }
     if (throttle('login:' + (req.ip || '') + ':' + String(req.body?.email || '').toLowerCase())) {
       return res.status(429).json({ error: 'Too many sign-in attempts. Wait a minute and retry.', code: 'RATE_LIMITED' });
     }
@@ -92,9 +132,9 @@ router.get('/firebase-config', async (req, res) => {
 /**
  * Firebase bridge: frontend sends a Firebase ID token (Google popup or phone
  * OTP via the Firebase client SDK). Backend verifies it, finds-or-creates the
- * YatraSetu user (by email, or synthetic phone email), and returns the
- * standard YatraSetu JWT so /api/trips, /api/safety, etc. keep working
- * unchanged. Same email/phone always maps to one YatraSetu account.
+ * Panthan user (by email, or synthetic phone email), and returns the
+ * standard Panthan JWT so /api/trips, /api/safety, etc. keep working
+ * unchanged. Same email/phone always maps to one Panthan account.
  * Body: { idToken: string, name?: string }
  */
 router.post('/firebase', async (req, res, next) => {

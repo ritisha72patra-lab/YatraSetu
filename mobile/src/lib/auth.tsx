@@ -9,6 +9,7 @@ type Ctx = {
   signIn: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   signInWithFirebaseToken: (idToken: string) => Promise<void>;
+  demoLogin: (role?: 'traveller' | 'admin') => Promise<void>;
   signOut: () => Promise<void>;
   refreshMe: () => Promise<void>;
 };
@@ -55,6 +56,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           save(await api('/api/auth/register', { method: 'POST', body: JSON.stringify({ name, email, password }) }, false)),
         signInWithFirebaseToken: async (idToken) =>
           save(await api('/api/auth/firebase', { method: 'POST', body: JSON.stringify({ idToken }) }, false)),
+        demoLogin: async (role) =>
+          save(await api('/api/auth/demo-login', { method: 'POST', body: JSON.stringify({ role: role || 'traveller' }) }, false)),
         signOut: async () => {
           await setToken(null);
           setUser(null);

@@ -1,5 +1,5 @@
 /**
- * Gemini AI integration for YatraSetu recommendations.
+ * Gemini AI integration for Panthan recommendations.
  * The API key stays server-side (GEMINI_API_KEY). Frontend calls /api/ai/recommend.
  * Without a key, callers fall back to the local heuristic so the app keeps working.
  */
@@ -45,7 +45,7 @@ function buildRecommendationPrompt({ spots, mode, interest, query }) {
   const task = mode === 'timing'
     ? 'For each place, recommend the best time window to visit today/tomorrow and one caution (heat, rain, crowds, or air quality).'
     : 'Rank the best 3-4 places for this traveller and explain each pick in one line, weighing low crowds, clean air, pleasant weather, and safety.';
-  return `You are YatraSetu, a travel safety assistant for India. Use ONLY the live signals below (crowd alerts, AQI, weather, safety scores) to advise the traveller.\nTraveller filter: ${query || 'anywhere in India'} · interest: ${interest || 'all'}.\n\nLive signals:\n${lines}\n\nTask: ${task}\nSafety rule: if AQI > 100 advise limiting outdoor exertion; if crowd >= 4 advise early-morning slots; never invent data not listed above.\n\nReply as compact JSON only (no markdown fences, no preamble, no self-check — output ONLY the JSON object, with summary written as 2-3 sentences of traveller-facing guidance): {"summary":"2-3 sentence overall guidance","recommendations":[{"name":"Place","reason":"one line tied to crowd/AQI/weather","bestTime":"time window","caution":"one caution or null"}]}`;
+  return `You are Panthan, a travel safety assistant for India. Use ONLY the live signals below (crowd alerts, AQI, weather, safety scores) to advise the traveller.\nTraveller filter: ${query || 'anywhere in India'} · interest: ${interest || 'all'}.\n\nLive signals:\n${lines}\n\nTask: ${task}\nSafety rule: if AQI > 100 advise limiting outdoor exertion; if crowd >= 4 advise early-morning slots; never invent data not listed above.\n\nReply as compact JSON only (no markdown fences, no preamble, no self-check — output ONLY the JSON object, with summary written as 2-3 sentences of traveller-facing guidance): {"summary":"2-3 sentence overall guidance","recommendations":[{"name":"Place","reason":"one line tied to crowd/AQI/weather","bestTime":"time window","caution":"one caution or null"}]}`;
 }
 
 function extractJson(text) {

@@ -61,18 +61,18 @@ const SPOTS = [
 // app prove the saving: save = mrp - price.
 const HOTELS = [
   // Jaipur — Historical
-  { spot: 'Jaipur', name: 'Rambagh Palace, Jaipur', stars: 5, pricePerNight: 18500, mrpPerNight: 22000, rating: 4.8, reviewsCount: 2400, amenities: ['Pool', 'Spa', 'Heritage suites', 'Fine dining'], imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=900&q=80', provider: 'YatraSetu Direct', isFeatured: true },
-  { spot: 'Jaipur', name: 'Hotel Pearl Palace', stars: 3, pricePerNight: 3200, mrpPerNight: 4000, rating: 4.5, reviewsCount: 5200, amenities: ['Rooftop restaurant', 'Free Wi-Fi', 'Family rooms'], imageUrl: 'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&w=900&q=80', provider: 'YatraSetu Direct', isFeatured: true },
-  { spot: 'Jaipur', name: 'Zostel Jaipur (Hostel)', stars: 2, pricePerNight: 999, mrpPerNight: 1299, rating: 4.4, reviewsCount: 8100, amenities: ['Dorms', 'Café', 'Backpacker vibe'], imageUrl: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=900&q=80', provider: 'YatraSetu Direct', isFeatured: false },
+  { spot: 'Jaipur', name: 'Rambagh Palace, Jaipur', stars: 5, pricePerNight: 18500, mrpPerNight: 22000, rating: 4.8, reviewsCount: 2400, amenities: ['Pool', 'Spa', 'Heritage suites', 'Fine dining'], imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=900&q=80', provider: 'Panthan Direct', isFeatured: true },
+  { spot: 'Jaipur', name: 'Hotel Pearl Palace', stars: 3, pricePerNight: 3200, mrpPerNight: 4000, rating: 4.5, reviewsCount: 5200, amenities: ['Rooftop restaurant', 'Free Wi-Fi', 'Family rooms'], imageUrl: 'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&w=900&q=80', provider: 'Panthan Direct', isFeatured: true },
+  { spot: 'Jaipur', name: 'Zostel Jaipur (Hostel)', stars: 2, pricePerNight: 999, mrpPerNight: 1299, rating: 4.4, reviewsCount: 8100, amenities: ['Dorms', 'Café', 'Backpacker vibe'], imageUrl: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=900&q=80', provider: 'Panthan Direct', isFeatured: false },
   // Goa — Beach
-  { spot: 'Goa', name: 'Taj Cidade de Goa Heritage', stars: 5, pricePerNight: 14500, mrpPerNight: 17500, rating: 4.7, reviewsCount: 3100, amenities: ['Beach access', 'Pool', 'Casino nearby', 'Sea view'], imageUrl: 'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?auto=format&fit=crop&w=900&q=80', provider: 'YatraSetu Direct', isFeatured: true },
-  { spot: 'Goa', name: 'BloomSuites, Calangute', stars: 4, pricePerNight: 5800, mrpPerNight: 7200, rating: 4.5, reviewsCount: 4600, amenities: ['5-min walk to beach', 'Breakfast', 'Co-working'], imageUrl: 'https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=900&q=80', provider: 'YatraSetu Direct', isFeatured: true },
-  { spot: 'Goa', name: 'goSTOPS Baga (Hostel)', stars: 2, pricePerNight: 899, mrpPerNight: 1199, rating: 4.3, reviewsCount: 7400, amenities: ['Dorms', 'Pool table', 'Nightlife walk'], imageUrl: 'https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=900&q=80', provider: 'YatraSetu Direct', isFeatured: false },
+  { spot: 'Goa', name: 'Taj Cidade de Goa Heritage', stars: 5, pricePerNight: 14500, mrpPerNight: 17500, rating: 4.7, reviewsCount: 3100, amenities: ['Beach access', 'Pool', 'Casino nearby', 'Sea view'], imageUrl: 'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?auto=format&fit=crop&w=900&q=80', provider: 'Panthan Direct', isFeatured: true },
+  { spot: 'Goa', name: 'BloomSuites, Calangute', stars: 4, pricePerNight: 5800, mrpPerNight: 7200, rating: 4.5, reviewsCount: 4600, amenities: ['5-min walk to beach', 'Breakfast', 'Co-working'], imageUrl: 'https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=900&q=80', provider: 'Panthan Direct', isFeatured: true },
+  { spot: 'Goa', name: 'goSTOPS Baga (Hostel)', stars: 2, pricePerNight: 899, mrpPerNight: 1199, rating: 4.3, reviewsCount: 7400, amenities: ['Dorms', 'Pool table', 'Nightlife walk'], imageUrl: 'https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=900&q=80', provider: 'Panthan Direct', isFeatured: false },
   // Manali — Hill Station
-  { spot: 'Manali', name: 'The Himalayan, Manali', stars: 5, pricePerNight: 12500, mrpPerNight: 15000, rating: 4.8, reviewsCount: 1900, amenities: ['Castle stay', 'Valley view', 'Spa', 'Bonfire'], imageUrl: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=900&q=80', provider: 'YatraSetu Direct', isFeatured: true },
-  { spot: 'Manali', name: 'Johnson Lodge & Spa', stars: 4, pricePerNight: 6200, mrpPerNight: 7800, rating: 4.6, reviewsCount: 2800, amenities: ['Heated rooms', 'Trout restaurant', 'River view'], imageUrl: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=900&q=80', provider: 'YatraSetu Direct', isFeatured: true },
-  { spot: 'Manali', name: 'Hotel Mountain Face', stars: 3, pricePerNight: 3400, mrpPerNight: 4200, rating: 4.4, reviewsCount: 3500, amenities: ['Mall Road walk', 'Breakfast', 'Parking'], imageUrl: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?auto=format&fit=crop&w=900&q=80', provider: 'YatraSetu Direct', isFeatured: false },
-  { spot: 'Manali', name: 'Zostel Manali (Hostel)', stars: 2, pricePerNight: 799, mrpPerNight: 999, rating: 4.5, reviewsCount: 9200, amenities: ['Dorms', 'Café', 'Trek desk'], imageUrl: 'https://images.unsplash.com/photo-1551632811-561732d1e306?auto=format&fit=crop&w=900&q=80', provider: 'YatraSetu Direct', isFeatured: false },
+  { spot: 'Manali', name: 'The Himalayan, Manali', stars: 5, pricePerNight: 12500, mrpPerNight: 15000, rating: 4.8, reviewsCount: 1900, amenities: ['Castle stay', 'Valley view', 'Spa', 'Bonfire'], imageUrl: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=900&q=80', provider: 'Panthan Direct', isFeatured: true },
+  { spot: 'Manali', name: 'Johnson Lodge & Spa', stars: 4, pricePerNight: 6200, mrpPerNight: 7800, rating: 4.6, reviewsCount: 2800, amenities: ['Heated rooms', 'Trout restaurant', 'River view'], imageUrl: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=900&q=80', provider: 'Panthan Direct', isFeatured: true },
+  { spot: 'Manali', name: 'Hotel Mountain Face', stars: 3, pricePerNight: 3400, mrpPerNight: 4200, rating: 4.4, reviewsCount: 3500, amenities: ['Mall Road walk', 'Breakfast', 'Parking'], imageUrl: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?auto=format&fit=crop&w=900&q=80', provider: 'Panthan Direct', isFeatured: false },
+  { spot: 'Manali', name: 'Zostel Manali (Hostel)', stars: 2, pricePerNight: 799, mrpPerNight: 999, rating: 4.5, reviewsCount: 9200, amenities: ['Dorms', 'Café', 'Trek desk'], imageUrl: 'https://images.unsplash.com/photo-1551632811-561732d1e306?auto=format&fit=crop&w=900&q=80', provider: 'Panthan Direct', isFeatured: false },
 ];
 
 const GUIDES = [
@@ -98,7 +98,7 @@ async function upsertDemoUser() {
   await prisma.user.upsert({
     where: { email: 'admin@yatrasetu.in' },
     update: { role: 'ADMIN' },
-    create: { name: 'YatraSetu Admin', email: 'admin@yatrasetu.in', passwordHash, role: 'ADMIN' }
+    create: { name: 'Panthan Admin', email: 'admin@yatrasetu.in', passwordHash, role: 'ADMIN' }
   });
 }
 

@@ -13,7 +13,7 @@ const review = z.object({
 router.get('/overview', async (req, res, next) => {
   try {
     const prisma = req.app.get('prisma');
-    const [guides, cabs, alerts, feedback, scans, liveGuides, guideRequests] = await Promise.all([
+    const [guides, cabs, alerts, feedback, scans, liveGuides, guideRequests, trips] = await Promise.all([
       prisma.guideProfile.findMany({ include: { user: { select: { name: true, email: true } } }, orderBy: { id: 'desc' } }),
       prisma.cabProfile.findMany({ orderBy: { id: 'desc' } }),
       prisma.safetyAlert.findMany({ where: { resolved: false }, include: { user: { select: { name: true, email: true } } }, orderBy: { createdAt: 'desc' } }),
@@ -30,8 +30,12 @@ router.get('/overview', async (req, res, next) => {
         orderBy: { createdAt: 'desc' },
         take: 30,
       }),
+      prisma.booking.findMany({
+        include: { tourist: { select: { name: true, email: true } }, spot: { select: { name: true } } },
+        where: { status: { not: 'CANCELLED' } }, orderBy: { createdAt: 'desc' }, take: 30,
+      }),
     ]);
-    res.json({ guides, cabs, alerts, feedback, scans, liveTourists: liveTourists(), liveGuides, guideRequests });
+    res.json({ guides, cabs, alerts, feedback, scans, liveTourists: liveTourists(), liveGuides, guideRequests, trips });
   } catch (e) { next(e); }
 });
 

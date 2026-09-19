@@ -101,7 +101,7 @@ router.get('/:id/price-compare', async (req, res, next) => {
       competitors,
       cheapestRival: Math.min(mrp, ...competitors.map((c) => c.total)),
       savings: Math.max(0, Math.min(mrp, ...competitors.map((c) => c.total)) - ours),
-      guarantee: `YatraSetu ₹${ours.toLocaleString('en-IN')} for ${nights}n is the lowest — MRP ₹${mrp.toLocaleString('en-IN')}.`,
+      guarantee: `Panthan ₹${ours.toLocaleString('en-IN')} for ${nights}n is the lowest — MRP ₹${mrp.toLocaleString('en-IN')}.`,
     });
   } catch (e) { next(e); }
 });

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, Alert, Image } from 'react-native';
 import { useAuth } from '../lib/auth';
 import { Screen } from '../lib/Screen';
 import { theme } from '../theme';
@@ -40,8 +40,9 @@ export default function AuthScreen() {
   return (
     <Screen padded={false}>
     <ScrollView contentContainerStyle={s.wrap}>
-      <Text style={s.brand}>YatraSetu</Text>
-      <Text style={s.sub}>Your bridge to a safer journey.</Text>
+      <Image source={require('../../assets/panthan-logo.jpeg')} style={s.logo} resizeMode="contain" />
+      <Text style={s.brand}>Panthan</Text>
+      <Text style={s.sub}>Your path to a safer journey.</Text>
       <View style={s.card}>
         <View style={s.tabs}>
           {(['login', 'register'] as const).map((m) => (
@@ -72,6 +73,7 @@ export default function AuthScreen() {
 
 const s = StyleSheet.create({
   wrap: { padding: 20, backgroundColor: theme.paper, flexGrow: 1, justifyContent: 'center' },
+  logo: { width: 180, height: 116, alignSelf: 'center', marginBottom: 8 },
   brand: { fontSize: 32, fontWeight: '800', color: theme.tealDark, textAlign: 'center' },
   sub: { textAlign: 'center', color: theme.muted, marginBottom: 16 },
   card: { backgroundColor: theme.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: theme.line },

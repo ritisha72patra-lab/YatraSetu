@@ -15,8 +15,8 @@ app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false 
 app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(',') || true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
-app.get('/', (_, res) => res.json({ service: 'yatrasetu-api', status: 'ok', frontend: 'Expo React Native app in ./mobile', docs: 'See README.md' }));
-app.get('/health', (_, res) => res.json({ status: 'ok', service: 'yatrasetu-api' }));
+app.get('/', (_, res) => res.json({ service: 'panthan-api', status: 'ok', frontend: 'Expo React Native app in ./mobile', docs: 'See README.md' }));
+app.get('/health', (_, res) => res.json({ status: 'ok', service: 'panthan-api' }));
 app.use('/api/auth', routes.auth);
 app.use('/api/spots', routes.spots);
 // Hotels: public reads, auth writes. GETs skip auth so Discover works logged-out.
@@ -68,4 +68,4 @@ const port = Number(process.env.PORT || 4000);
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.startsWith('replace-')) {
   console.warn('[warn] JWT_SECRET is missing/placeholder — set a long random value in .env before production.');
 }
-app.listen(port, '0.0.0.0', () => console.log(`YatraSetu API listening on http://0.0.0.0:${port}`));
+app.listen(port, '0.0.0.0', () => console.log(`Panthan API listening on http://0.0.0.0:${port}`));

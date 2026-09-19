@@ -17,13 +17,17 @@ function qrTtlMs() {
 }
 
 function canonical(service, id, iat) {
+  return JSON.stringify({ v: 1, type: 'PANTHAN_VERIFICATION', service, id, iat });
+}
+
+function canonicalLegacy(service, id, iat) {
   return JSON.stringify({ v: 1, type: 'YATRASETU_VERIFICATION', service, id, iat });
 }
 
 function signQr(service, id, iat = Date.now()) {
   const body = canonical(service, id, iat);
   const sig = crypto.createHmac('sha256', qrSecret()).update(body).digest('hex');
-  return JSON.stringify({ v: 1, type: 'YATRASETU_VERIFICATION', service, id, iat, sig });
+  return JSON.stringify({ v: 1, type: 'PANTHAN_VERIFICATION', service, id, iat, sig });
 }
 
 function safeEqual(a, b) {
@@ -38,15 +42,18 @@ function safeEqual(a, b) {
 function verifyQrText(qrText) {
   let obj;
   try { obj = JSON.parse(String(qrText || '').trim()); }
-  catch { return { ok: false, error: 'This QR is not a YatraSetu code. Look for the YatraSetu registry card.' }; }
+  catch { return { ok: false, error: 'This QR is not a Panthan code. Look for the Panthan registry card.' }; }
   const service = String(obj.service || '').toUpperCase();
-  if (obj.type !== 'YATRASETU_VERIFICATION' || !['GUIDE', 'CAB'].includes(service) || !obj.id) {
-    return { ok: false, error: 'This QR is not a YatraSetu registry code.' };
+  // NOTE: type 'YATRASETU_VERIFICATION' kept for backward compat with printed cards.
+  // New Panthan cards use 'PANTHAN_VERIFICATION'; both accepted.
+  if (!['YATRASETU_VERIFICATION', 'PANTHAN_VERIFICATION'].includes(obj.type) || !['GUIDE', 'CAB'].includes(service) || !obj.id) {
+    return { ok: false, error: 'This QR is not a Panthan registry code.' };
   }
   // Legacy unsigned QR (issued before signing) — accept but flag.
   if (!obj.sig || !obj.iat) return { ok: true, service, id: String(obj.id), signed: false, legacy: true };
-  const expected = crypto.createHmac('sha256', qrSecret()).update(canonical(service, String(obj.id), Number(obj.iat))).digest('hex');
-  if (!safeEqual(expected, obj.sig)) return { ok: false, error: 'QR signature mismatch — possible forgery. Do not pay; ask for the registry card.' };
+  const expectedNew = crypto.createHmac('sha256', qrSecret()).update(canonical(service, String(obj.id), Number(obj.iat))).digest('hex');
+  const expectedOld = crypto.createHmac('sha256', qrSecret()).update(canonicalLegacy(service, String(obj.id), Number(obj.iat))).digest('hex');
+  if (!safeEqual(expectedNew, obj.sig) && !safeEqual(expectedOld, obj.sig)) return { ok: false, error: 'QR signature mismatch — possible forgery. Do not pay; ask for the registry card.' };
   if (Number(obj.iat) > Date.now() + 5 * 60000) return { ok: false, error: 'QR timestamp is in the future — possible forgery.' };
   if (Date.now() - Number(obj.iat) > qrTtlMs()) return { ok: false, error: 'This QR card has expired. Ask the provider for a fresh registry card.' };
   return { ok: true, service, id: String(obj.id), signed: true, issuedAt: new Date(Number(obj.iat)).toISOString() };
@@ -69,7 +76,7 @@ function analysePrice({ service, record, booking, chargedAmount }) {
   };
   if (!record.governmentVerified) {
     result.severity = 'danger';
-    result.alerts.push('NOT APPROVED in the YatraSetu registry. Do not pay in advance; ask admin to review this provider.');
+    result.alerts.push('NOT APPROVED in the Panthan registry. Do not pay in advance; ask admin to review this provider.');
   }
   if (booking && !isAssigned(booking, service, record.id)) {
     if (result.severity !== 'danger') result.severity = 'warn';

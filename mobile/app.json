@@ -1,19 +1,19 @@
 {
   "expo": {
-    "name": "YatraSetu",
-    "slug": "yatrasetu",
+    "name": "Panthan",
+    "slug": "panthan",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/yatrasetu-icon.png",
+    "icon": "./assets/panthan-icon.png",
     "userInterfaceStyle": "automatic",
-    "scheme": "yatrasetu",
+    "scheme": "panthan",
     "assetBundlePatterns": ["**/*"],
-    "ios": { "supportsTablet": true, "bundleIdentifier": "in.yatrasetu.app" },
-    "android": { "package": "in.yatrasetu.app", "adaptiveIcon": { "foregroundImage": "./assets/yatrasetu-icon.png", "backgroundColor": "#0b3f43" } },
+    "ios": { "supportsTablet": true, "bundleIdentifier": "in.panthan.app" },
+    "android": { "package": "in.panthan.app", "adaptiveIcon": { "foregroundImage": "./assets/panthan-icon.png", "backgroundColor": "#eef4f4" } },
     "plugins": [
-      ["expo-camera", { "cameraPermission": "Allow YatraSetu to scan guide/cab QR codes." }],
-      ["expo-location", { "locationWhenInUsePermission": "Allow YatraSetu to show your live location next to your guide for safety." }],
-      ["expo-splash-screen", { "image": "./assets/yatrasetu-icon.png", "resizeMode": "contain", "backgroundColor": "#0b3f43" }]
+      ["expo-camera", { "cameraPermission": "Allow Panthan to scan guide/cab QR codes." }],
+      ["expo-location", { "locationWhenInUsePermission": "Allow Panthan to show your live location next to your guide for safety." }],
+      ["expo-splash-screen", { "image": "./assets/panthan-icon.png", "resizeMode": "contain", "backgroundColor": "#eef4f4" }]
     ],
     "extra": {
       "apiUrl": "http://172.29.163.91:4000",

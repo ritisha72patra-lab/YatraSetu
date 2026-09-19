@@ -94,7 +94,7 @@ router.post('/plan', async (req, res, next) => {
       budgetBreakdown: { accommodation, food, transit, activities },
       quote, // minimum-price guarantee (feature 9)
       bookNow: { bookingId: booking.id, amount: quote.total, next: 'POST /api/payments/create { bookingId } then /api/payments/confirm' },
-      explanation: `A ${days}-day smart plan within ₹${data.budget} · routed around crowd, AQI, weather and safety · ${guide ? `guide ${guide.user.name} (₹${guide.officialDailyRate}/day fixed)` : 'no guide yet'} · YatraSetu total ₹${quote.total.toLocaleString('en-IN')} (lowest vs ${quote.cheapestRival.toLocaleString('en-IN')} elsewhere).`,
+      explanation: `A ${days}-day smart plan within ₹${data.budget} · routed around crowd, AQI, weather and safety · ${guide ? `guide ${guide.user.name} (₹${guide.officialDailyRate}/day fixed)` : 'no guide yet'} · Panthan total ₹${quote.total.toLocaleString('en-IN')} (lowest vs ${quote.cheapestRival.toLocaleString('en-IN')} elsewhere).`,
       suggestedGuide: guide ? { id: guide.id, name: guide.user.name, rating: guide.rating, officialDailyRate: guide.officialDailyRate, languages: guide.languages, region: guide.region } : null
     });
   } catch (e) { next(e); } finally { global.__ysPrismaForPlanner = null; }

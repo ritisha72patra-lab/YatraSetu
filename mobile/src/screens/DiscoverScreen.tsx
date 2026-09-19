@@ -132,7 +132,7 @@ export default function DiscoverScreen({ navigation }: any) {
       <View style={s.hero}>
         <Text style={s.eyebrow}>A LITTLE INSPIRATION FOR YOU</Text>
         <Text style={s.h1}>Where will your next story take you?</Text>
-        <Text style={s.tagline}>YatraSetu · Your Bridge to a Safer Journey{user ? ` · Namaste, ${user.name.split(' ')[0]} 👋` : ''}</Text>
+        <Text style={s.tagline}>Panthan · Your Path to a Safer Journey{user ? ` · Namaste, ${user.name.split(' ')[0]} 👋` : ''}</Text>
         <View style={s.searchBar}>
           <TextInput style={s.searchInput} placeholder="Search Jaipur, Goa, Manali…" value={q} onChangeText={setQ} placeholderTextColor={theme.muted} />
           <View style={s.searchBtn}>
@@ -235,7 +235,7 @@ export default function DiscoverScreen({ navigation }: any) {
                   <Text style={s.guideHead}>{t.spot?.name} · Registry-approved & ready for your trip</Text>
                   <Text style={s.guideName}>{t.guide.user?.name || 'Guide'} ✓</Text>
                   <Text style={s.guideSub}>₹{t.agreedRate || t.guide.officialDailyRate}/day · {(t.guide.languages || []).join(', ')}</Text>
-                  <Text style={s.verified}>YATRASETU REGISTRY · CONFIRMED BOOKING</Text>
+                  <Text style={s.verified}>PANTHAN REGISTRY · CONFIRMED BOOKING</Text>
                   {guideFormFor === t.id ? (
                     <View style={{ marginTop: 10 }}>
                       <TextInput

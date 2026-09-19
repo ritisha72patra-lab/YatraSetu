@@ -1,8 +1,8 @@
 {
-  "name": "yatrasetu-api",
+  "name": "panthan-api",
   "version": "1.0.0",
   "private": true,
-  "description": "Backend API for the YatraSetu smart tourism platform",
+  "description": "Backend API for the Panthan smart tourism platform",
   "scripts": {
     "dev": "node --watch src/server.js",
     "dev:lan": "node --watch src/server.js",

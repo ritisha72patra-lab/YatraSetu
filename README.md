@@ -1,4 +1,4 @@
-# YatraSetu — API + Expo React Native app
+# Panthan — API + Expo React Native app
 
 Node.js + Express REST API, PostgreSQL + Prisma, Python crowd service (Starlette + msgspec + scikit-learn), and an **Expo React Native frontend in `./mobile`** (the old HTML dashboard is removed; the API is now API-only).
 

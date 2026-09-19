@@ -88,7 +88,7 @@ model Hotel {
   reviewsCount Int @default(100)
   amenities String[]
   imageUrl String?
-  provider String @default("YatraSetu Direct")
+  provider String @default("Panthan Direct")
   externalId String?
   isFeatured Boolean @default(false)
   createdAt DateTime @default(now())

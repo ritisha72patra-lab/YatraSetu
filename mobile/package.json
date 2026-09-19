@@ -1,5 +1,5 @@
 {
-  "name": "yatrasetu-mobile",
+  "name": "panthan-mobile",
   "version": "1.0.0",
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
@@ -30,7 +30,8 @@
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "~4.26.0"
+    "react-native-screens": "~4.26.0",
+    "react-native-webview": "^13.16.1"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",

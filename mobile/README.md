@@ -1,4 +1,4 @@
-# YatraSetu mobile (Expo React Native)
+# Panthan mobile (Expo React Native)
 
 Tourist app. API-only backend in `../src`. Works on any system via Expo Go — no Android Studio / Xcode needed.
 

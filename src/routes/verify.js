@@ -60,8 +60,8 @@ async function doScan(prisma, { service, id, bookingId, chargedAmount, scannedBy
         : { driverName: record.driverName, registrationNumber: record.registrationNumber, permitNumber: record.permitNumber, officialRatePerKm: officialPrice, rating: record.rating },
       scam, // overcharge + scam alerts (feature 3)
       message: record.governmentVerified
-        ? (scam.isOvercharge ? `Registry approved BUT overcharging detected — pay only ₹${scam.agreedPrice ?? officialPrice}.` : 'YatraSetu registry approved. The official price is shown below.')
-        : 'This service is NOT approved in the YatraSetu registry. Do not pay; report it.',
+        ? (scam.isOvercharge ? `Registry approved BUT overcharging detected — pay only ₹${scam.agreedPrice ?? officialPrice}.` : 'Panthan registry approved. The official price is shown below.')
+        : 'This service is NOT approved in the Panthan registry. Do not pay; report it.',
     },
   };
 }

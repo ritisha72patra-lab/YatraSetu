@@ -1,5 +1,5 @@
 /** Minimum-price guarantee (feature 9).
- * YatraSetu total is always the floor: 8% below spot market average + official
+ * Panthan total is always the floor: 8% below spot market average + official
  * fixed guide/cab rates with zero commission. Competitor totals are estimated
  * multipliers so the app can *prove* the saving without paid APIs.
  * Optimised: pure functions, no deps, O(1).

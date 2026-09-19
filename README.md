@@ -3,9 +3,21 @@
 _(formerly YatraSetu)_
 
 Node.js + Express REST API, PostgreSQL + Prisma, Python crowd service (Starlette + msgspec + scikit-learn), and an **Expo React Native frontend in `./mobile`** (the old HTML dashboard is removed; the API is now API-only).
+Node.js + Express REST API, PostgreSQL + Prisma, Python crowd service (Starlette + msgspec + scikit-learn), and an **Expo React Native frontend in `./mobile`** (the old HTML dashboard is removed; the API is now API-only).
 
 ## Run on any system
+## Run on any system
 
+1. Install **Node.js 22** (see `.nvmrc`; Node 20.19+ works, 24 not recommended for Expo 57), **PostgreSQL 15+** (or a Neon URL), and optionally **Python 3.10+**.
+2. Copy `.env.example` to `.env`; set `DATABASE_URL`, `JWT_SECRET`, `QR_SECRET`. Add `GEMINI_API_KEY`, `OPENWEATHER_API_KEY`, `WAQI_API_TOKEN` to go live (all optional — graceful fallbacks included). Leave `RAZORPAY_*` empty for mock checkout.
+3. One-command setup: `npm run setup` (backend install + DB push + seed deps + mobile install + `expo install --fix`). Or step by step:
+   Backend: `npm install`, `npx prisma generate`, `npx prisma db push`, `npm run prisma:seed`, `npm run dev` → `http://localhost:4000/health`.
+4. Crowd model: `cd prediction-service`, `pip install -r requirements.txt`, `python train.py`, `uvicorn main:app --port 8001`.
+5. Mobile: `cd mobile`, `npm install`, `npx expo start --lan`, scan with Expo Go (see `mobile/README.md` for LAN-IP setup). Check health with `npx expo-doctor` (21/21 expected).
+
+Catalogue: **3 featured places** — Jaipur (Historical), Goa (Beach), Manali (Hill Station) — each with **popular hotels, best prices, Book now + Pay** (`/api/hotels/*` → `/api/payments/*`).
+
+Demo logins: `admin@yatrasetu.in` / `DemoPass123!`, `traveller@example.com` / `DemoPass123!`.
 1. Install **Node.js 22** (see `.nvmrc`; Node 20.19+ works, 24 not recommended for Expo 57), **PostgreSQL 15+** (or a Neon URL), and optionally **Python 3.10+**.
 2. Copy `.env.example` to `.env`; set `DATABASE_URL`, `JWT_SECRET`, `QR_SECRET`. Add `GEMINI_API_KEY`, `OPENWEATHER_API_KEY`, `WAQI_API_TOKEN` to go live (all optional — graceful fallbacks included). Leave `RAZORPAY_*` empty for mock checkout.
 3. One-command setup: `npm run setup` (backend install + DB push + seed deps + mobile install + `expo install --fix`). Or step by step:

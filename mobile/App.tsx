@@ -76,3 +76,9 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+function AdminTabs() {
+  return <Tabs.Navigator screenOptions={{ headerShown: false, tabBarActiveTintColor: theme.teal, tabBarInactiveTintColor: theme.muted }}>
+    <Tabs.Screen name="ControlRoom" component={AdminScreen} options={{ tabBarLabel: 'Control room', tabBarIcon: ({ color, size }) => <Ionicons name="shield-checkmark" size={size} color={color} /> }} />
+  </Tabs.Navigator>;
+}

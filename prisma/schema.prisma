@@ -77,26 +77,6 @@ model TouristSpot {
   hotels Hotel[]
   createdAt DateTime @default(now())
 }
-model Hotel {
-  id String @id @default(cuid())
-  spotId String
-  name String
-  stars Int @default(3)
-  pricePerNight Int
-  mrpPerNight Int?
-  rating Float @default(4.2)
-  reviewsCount Int @default(100)
-  amenities String[]
-  imageUrl String?
-  provider String @default("YatraSetu Direct")
-  externalId String?
-  isFeatured Boolean @default(false)
-  createdAt DateTime @default(now())
-  spot TouristSpot @relation(fields: [spotId], references: [id], onDelete: Cascade)
-  bookings Booking[]
-  @@unique([spotId, name])
-  @@index([spotId, pricePerNight])
-}
 model GuideProfile {
   id String @id @default(cuid())
   userId String @unique

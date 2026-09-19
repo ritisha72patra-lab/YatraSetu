@@ -1,10 +1,11 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert, FlatList, RefreshControl, TextInput } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { api } from '../lib/api';
 import { Screen } from '../lib/Screen';
 import { theme } from '../theme';
+import LiveTrackingMap from '../components/LiveTrackingMap';
 
 function km(a: any, b: any): string | null {
   if (!a || !b) return null;
@@ -38,6 +39,15 @@ function LiveMap({ me, guideLoc, guideNote }: { me: any; guideLoc: any; guideNot
       </View>
     );
   }
+  return (
+    <View style={s.mapBox}>
+      <LiveTrackingMap markers={[
+        { id: 'me', latitude: me.latitude, longitude: me.longitude, title: 'You', color: '#1a7fe0' },
+        ...(guideLoc ? [{ id: 'guide', latitude: Number(guideLoc.latitude), longitude: Number(guideLoc.longitude), title: 'Guide', color: '#ed5b43' }] : []),
+      ]} />
+      {!guideLoc ? <Text style={s.mapWarn}>Guide location isn't available right now. {guideNote}</Text> : <Text style={s.mapOk}>Showing you + guide on the live map.</Text>}
+    </View>
+  );
   if (RNMapView && RNMarker) {
     const region = {
       latitude: guideLoc ? (me.latitude + guideLoc.latitude) / 2 : me.latitude,
@@ -84,8 +94,8 @@ function LiveMap({ me, guideLoc, guideNote }: { me: any; guideLoc: any; guideNot
         </View>
         {guideLoc && guideXY ? (
           <>
-            <View style={[s.mapDot, s.mapDotGuide, { left: guideXY.left, top: guideXY.top }]} />
-            <View style={[s.mapTag, { left: guideXY.left, top: guideXY.top }]}>
+            <View style={[s.mapDot, s.mapDotGuide, { left: guideXY!.left, top: guideXY!.top }]} />
+            <View style={[s.mapTag, { left: guideXY!.left, top: guideXY!.top }]}>
               <Text style={s.mapTagT}>Guide</Text>
             </View>
           </>
@@ -110,6 +120,20 @@ export default function SafetyScreen() {
   const [guideNote, setGuideNote] = useState('Finding your guide…');
   const [me, setMe] = useState<any>(null);
   const [sharing, setSharing] = useState(false);
+
+  useEffect(() => {
+    if (!sharing) return;
+    let subscription: Location.LocationSubscription | null = null;
+    Location.watchPositionAsync(
+      { accuracy: Location.Accuracy.Balanced, timeInterval: 5000, distanceInterval: 10 },
+      async (position) => {
+        const point = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+        setMe({ ...point, updatedAt: new Date().toISOString() });
+        try { await api('/api/location/tourist', { method: 'POST', body: JSON.stringify(point) }); } catch {}
+      }
+    ).then((watcher) => { subscription = watcher; }).catch(() => setSharing(false));
+    return () => subscription?.remove();
+  }, [sharing]);
 
   const loadGuide = async () => {
     try {

@@ -132,7 +132,7 @@ export default function DiscoverScreen({ navigation }: any) {
       <View style={s.hero}>
         <Text style={s.eyebrow}>A LITTLE INSPIRATION FOR YOU</Text>
         <Text style={s.h1}>Where will your next story take you?</Text>
-        <Text style={s.tagline}>Panthan · Your Bridge to a Safer Journey{user ? ` · Namaste, ${user.name.split(' ')[0]} 👋` : ''}</Text>
+        <Text style={s.tagline}>Panthan · Your Path to a Safer Journey{user ? ` · Namaste, ${user.name.split(' ')[0]} 👋` : ''}</Text>
         <View style={s.searchBar}>
           <TextInput style={s.searchInput} placeholder="Search Jaipur, Goa, Manali…" value={q} onChangeText={setQ} placeholderTextColor={theme.muted} />
           <View style={s.searchBtn}>

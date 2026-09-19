@@ -15,9 +15,29 @@ function throttle(key, limit = 10, windowMs = 60000) {
   return arr.length > limit;
 }
 
+// Tiny in-memory login throttle (per IP+email, 10 tries/min) — no Redis needed,
+// works on any system and resets on restart. Production: move to Redis.
+const _attempts = new Map();
+function throttle(key, limit = 10, windowMs = 60000) {
+  const now = Date.now();
+  const arr = (_attempts.get(key) || []).filter((t) => now - t < windowMs);
+  arr.push(now);
+  _attempts.set(key, arr);
+  return arr.length > limit;
+}
+
 const credentials = z.object({ name: z.string().min(2).optional(), email: z.string().email(), password: z.string().min(8) });
 const tokenFor = user => jwt.sign({ sub: user.id, role: user.role, name: user.name }, process.env.JWT_SECRET, { expiresIn: '7d' });
 const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, preferences: user.preferences || null });
+
+function friendlyRegisterError(e, email) {
+  // Prisma unique violation -> email already taken
+  if (e?.code === 'P2002') {
+    const err = new Error(`This email (${email}) is already registered. Please Sign in instead. If you registered with Firebase/Google using the same email, just Sign in — your accounts share the same email.`);
+    err.status = 409; err.code = 'EMAIL_TAKEN'; throw err;
+  }
+  throw e;
+}
 
 function friendlyRegisterError(e, email) {
   // Prisma unique violation -> email already taken
@@ -44,8 +64,25 @@ router.post('/register', async (req, res, next) => {
       const err = new Error(`This email (${data.email}) is already registered. Please Sign in instead.`);
       err.status = 409; err.code = 'EMAIL_TAKEN'; throw err;
     }
+    const existing = await req.app.get('prisma').user.findUnique({ where: { email: data.email } }).catch(() => null);
+    if (existing) {
+      // Firebase-linked placeholder accounts can be "claimed" by setting a password
+      if (String(existing.passwordHash || '').startsWith('firebase:')) {
+        const user = await req.app.get('prisma').user.update({
+          where: { id: existing.id },
+          data: { name: data.name, passwordHash: await bcrypt.hash(data.password, 12) },
+        });
+        return res.status(200).json({ token: tokenFor(user), user: publicUser(user), notice: 'Your Firebase/Google email was already on file — a password has now been set so email+password sign-in works too.' });
+      }
+      const err = new Error(`This email (${data.email}) is already registered. Please Sign in instead.`);
+      err.status = 409; err.code = 'EMAIL_TAKEN'; throw err;
+    }
     const user = await req.app.get('prisma').user.create({ data: { name: data.name, email: data.email, passwordHash: await bcrypt.hash(data.password, 12) } });
     res.status(201).json({ token: tokenFor(user), user: publicUser(user) });
+  } catch (e) {
+    if (e?.code === 'P2002') return next(friendlyRegisterError(e, req.body?.email));
+    next(e);
+  }
   } catch (e) {
     if (e?.code === 'P2002') return next(friendlyRegisterError(e, req.body?.email));
     next(e);
@@ -54,6 +91,9 @@ router.post('/register', async (req, res, next) => {
 
 router.post('/login', async (req, res, next) => {
   try {
+    if (throttle('login:' + (req.ip || '') + ':' + String(req.body?.email || '').toLowerCase())) {
+      return res.status(429).json({ error: 'Too many sign-in attempts. Wait a minute and retry.', code: 'RATE_LIMITED' });
+    }
     if (throttle('login:' + (req.ip || '') + ':' + String(req.body?.email || '').toLowerCase())) {
       return res.status(429).json({ error: 'Too many sign-in attempts. Wait a minute and retry.', code: 'RATE_LIMITED' });
     }
@@ -66,31 +106,6 @@ router.post('/login', async (req, res, next) => {
         return res.status(401).json({ error: 'This email was registered via Firebase/Google (no password set). Use “Continue with Firebase” with the same email, or Register again with a password to link it.', code: 'FIREBASE_PASSWORD_MISSING' });
       }
       return res.status(401).json({ error: 'Incorrect email or password', code: 'INVALID_CREDENTIALS' });
-    }
-    res.json({ token: tokenFor(user), user: publicUser(user) });
-  } catch (e) { next(e); }
-});
-
-/**
- * DEMO-ONLY bypass: logs straight into a seeded demo account with NO
- * password check at all. Guarded by ENABLE_DEMO_LOGIN so this can never
- * run by accident anywhere real users could reach this API — set
- * ENABLE_DEMO_LOGIN=false (or delete the line) in .env before deploying
- * anywhere beyond your own machine.
- * Body: { role?: 'traveller' | 'admin' } — defaults to 'traveller'.
- */
-router.post('/demo-login', async (req, res, next) => {
-  try {
-    if (process.env.ENABLE_DEMO_LOGIN !== 'true') {
-      const err = new Error('Demo login is disabled on this server. Set ENABLE_DEMO_LOGIN=true in .env for local development only, then restart the API.');
-      err.status = 403; err.code = 'DEMO_LOGIN_DISABLED'; throw err;
-    }
-    const role = req.body?.role === 'admin' ? 'admin' : 'traveller';
-    const email = role === 'admin' ? 'admin@yatrasetu.in' : 'traveller@example.com';
-    const user = await req.app.get('prisma').user.findUnique({ where: { email } });
-    if (!user) {
-      const err = new Error(`Demo account (${email}) not found. Run "npm run prisma:seed" first.`);
-      err.status = 404; err.code = 'DEMO_USER_MISSING'; throw err;
     }
     res.json({ token: tokenFor(user), user: publicUser(user) });
   } catch (e) { next(e); }
